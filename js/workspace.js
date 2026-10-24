@@ -266,6 +266,7 @@ export const UNDO_ACTIONS = {
   restore: 'バックアップからの復元',
   sample: 'サンプルデータの読込',
   import: 'CSVの取込',
+  copyPrev: '前の期からのコピー',
   removeCompany: '会社の削除',
 };
 

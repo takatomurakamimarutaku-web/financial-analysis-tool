@@ -124,6 +124,11 @@
             <button type="button" id="btnRemovePeriod" class="btn btn-danger">期を削除</button>
           </div>
         </div>
+        <div class="copy-prev">
+          <button type="button" id="btnCopyPrev" class="btn">前の期からコピー</button>
+          <span class="note">前の期の金額を、この期の未入力の欄にだけ入れます</span>
+        </div>
+        <div id="missingFields" class="missing-fields" aria-live="polite" hidden></div>
         <div class="csv-import">
           <button type="button" id="btnCsvImport" class="btn">試算表CSVを取り込む</button>
           <span class="note">選択中の期に、科目名と金額のCSVから入力します</span>

@@ -39,7 +39,7 @@ export function renderNetDebtInputs() {
       name.value = it.name;
       name.addEventListener('input', () => { it.name = name.value; onNetDebtChanged(); });
 
-      const amount = el('input', { id: `${idBase}-amt`, type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: unitName('netDebt') });
+      const amount = el('input', { id: `${idBase}-amt`, type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: unitName('netDebt'), 'data-amount': '' });
       amount.value = formatInput(it.amount, 'netDebt');
       amount.addEventListener('input', () => {
         const text = amount.value.trim();

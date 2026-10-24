@@ -35,7 +35,7 @@ export function renderAdjustments() {
     desc.value = a.description;
     desc.addEventListener('input', () => { a.description = desc.value; onAdjustmentChanged(); });
 
-    const amount = el('input', { id: `${idBase}-amt`, type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: unitName('ebitda') });
+    const amount = el('input', { id: `${idBase}-amt`, type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: unitName('ebitda'), 'data-amount': '' });
     amount.value = formatInput(a.amount, 'ebitda');
     amount.addEventListener('input', () => {
       const text = amount.value.trim();

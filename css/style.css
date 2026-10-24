@@ -1085,3 +1085,12 @@ body.reporting .company-bar { display: none; }
 .radar-table thead th { color: var(--muted); font-weight: 600; font-size: 12px; }
 .radar-table-wrap .note { margin: 6px 0 0; }
 .report .radar { max-width: none; }
+
+/* ---- 入力の補助（前の期からコピー・未入力の主な科目） ---- */
+.copy-prev { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 10px 0 4px; }
+.copy-prev .note { margin: 0; font-size: 12px; }
+.missing-fields { margin: 10px 0 4px; padding: 8px 10px; border: 1px solid var(--warn-border); background: var(--warn-bg); color: var(--warn-text); border-radius: 8px; }
+.missing-fields[hidden] { display: none; }
+.missing-head { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+.missing-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.missing-item { font: inherit; font-size: 13px; padding: 4px 10px; min-height: 32px; border-radius: 16px; border: 1px solid var(--warn-border); background: var(--surface); color: var(--text); cursor: pointer; }

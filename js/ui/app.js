@@ -13,7 +13,8 @@ import { $, currentPeriod, el, hasPendingSave, saveNow, scheduleSave, setWorkspa
 import { renderDiagrams } from './diagram.js';
 import { closeModal, openOnboarding, readOnboarded, showChangesIfUpdated } from './dialogs.js';
 import {
-  onMovePeriod, onRemovePeriod, periodName, renderForm, renderGlobalWarnings, renderInputResults, renderInputWarnings, renderSummary,
+  attachLiveGrouping, onCopyPrevious, onMovePeriod, onRemovePeriod, periodName, renderForm, renderGlobalWarnings, renderInputResults, renderInputWarnings,
+  renderMissingFields, renderSummary,
 } from './input.js';
 import { renderSectionNav, updateNavHeight } from './nav.js';
 import { LINE_LISTS, onAddLineItem, renderNetDebtSummary } from './netdebt.js';
@@ -49,6 +50,7 @@ export function setView(view) {
 
 export function update() {
   renderSummary();
+  renderMissingFields();
   renderInputWarnings();
   renderInputResults();
   renderAdjustmentSummary();
@@ -95,6 +97,8 @@ export function init() {
   $('btnMoveRight').addEventListener('click', () => onMovePeriod(1));
   $('btnRemovePeriod').addEventListener('click', onRemovePeriod);
   $('btnSample').addEventListener('click', onLoadSample);
+  $('btnCopyPrev').addEventListener('click', onCopyPrevious);
+  attachLiveGrouping();
   $('btnCsvImport').addEventListener('click', onCsvImportClick);
   $('csvFile').addEventListener('change', onCsvFile);
   $('btnClear').addEventListener('click', onClear);

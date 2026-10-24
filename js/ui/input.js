@@ -6,12 +6,13 @@ import {
 import {
   accountTree, applyAccountTotalsToPeriod, commonUnit, fromDisplayAmount, indicatorList, isComputedAccount, rowLabel,
 } from '../settings.js';
+import { copyFromPrevious, liveGroup, missingRequired } from '../input-helpers.js';
 import { addPeriod, movePeriod, removePeriod } from '../store.js';
 import { renderAdjustments } from './adjustments.js';
 import { update } from './app.js';
 import { keepUndo, showUndoToast } from './backup.js';
 import {
-  $, applyTheme, badgeEl, criterionBar, currentPeriod, days, el, evaluation, fa, fmt, formatInput, fv, saveNow, settings, state, unitName,
+  $, applyTheme, badgeEl, criterionBar, currentPeriod, days, el, evaluation, fa, fmt, formatInput, fv, saveNow, settings, showToast, state, unitName,
 } from './core.js';
 import { helpButton } from './dialogs.js';
 import { renderNetDebtInputs } from './netdebt.js';
@@ -79,7 +80,7 @@ export function periodName(p, i) {
 
 export function amountInput(id, attrs, value, scope) {
   const input = el('input', {
-    id, type: 'text', inputmode: 'decimal', autocomplete: 'off', enterkeyhint: 'next', ...attrs,
+    id, type: 'text', inputmode: 'decimal', autocomplete: 'off', enterkeyhint: 'next', 'data-amount': '', ...attrs,
   });
   input.value = formatInput(value, scope);
   return input;
@@ -185,6 +186,7 @@ export function renderPeriodBar() {
 
   $('periodLabel').value = currentPeriod().label;
   $('btnMoveLeft').disabled = state.selected === 0;
+  $('btnCopyPrev').disabled = state.selected === 0;
   $('btnMoveRight').disabled = state.selected === state.data.periods.length - 1;
 }
 
@@ -197,6 +199,7 @@ export function renderForm() {
   renderUnitLabels();
   renderAdjustments();
   renderNetDebtInputs();
+  renderMissingFields();
 }
 
 export function onFieldInput(e) {
@@ -255,6 +258,68 @@ export function onRemovePeriod() {
   update();
   saveNow();
   showUndoToast(`「${periodName(p, state.selected)}」を削除しました`, undoable);
+}
+
+// 金額の入力欄（data-amount）に、入力中から3桁ごとのカンマを入れる（日本語入力の変換中は除く）
+export function attachLiveGrouping() {
+  document.addEventListener('input', (e) => {
+    const t = e.target;
+    if (!(t instanceof HTMLInputElement) || !t.hasAttribute('data-amount') || e.isComposing || t.readOnly) return;
+    const caret = t.selectionStart ?? t.value.length;
+    const r = liveGroup(t.value, caret);
+    if (r.text === t.value) return;
+    t.value = r.text;
+    try {
+      t.setSelectionRange(r.caret, r.caret);
+    } catch {
+      // カーソル位置を設定できない入力欄では何もしない
+    }
+  }, true);
+}
+
+// 未入力の主な科目（選択中の期）。押すとその入力欄へ移動する
+export function renderMissingFields() {
+  const box = $('missingFields');
+  if (!box) return;
+  const hidden = [...settings().accounts.pl, ...settings().accounts.bs].filter((a) => a.hidden).map((a) => a.key);
+  const missing = missingRequired(currentPeriod(), hidden);
+  box.hidden = missing.length === 0;
+  if (!missing.length) {
+    box.replaceChildren();
+    return;
+  }
+  const labelOf = (section, key) => accountTree(settings(), section).find((a) => a.key === key)?.label ?? key;
+  box.replaceChildren(
+    el('span', { className: 'missing-head', text: `未入力の主な科目（${missing.length}）` }),
+    el('div', { className: 'missing-list' }, missing.map((f) => {
+      const b = el('button', { type: 'button', className: 'missing-item', title: `${f.uses}に使います`, text: labelOf(f.section, f.key) });
+      b.addEventListener('click', () => {
+        const input = $(`f-${f.section}-${f.key}`);
+        if (!input) return;
+        input.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        input.focus({ preventScroll: true });
+      });
+      return b;
+    })),
+  );
+}
+
+// 前の期の金額を、選択中の期の未入力の欄にだけコピーする
+export function onCopyPrevious() {
+  const i = state.selected;
+  if (i === 0) return;
+  const prev = state.data.periods[i - 1];
+  const { period, count } = copyFromPrevious(currentPeriod(), prev, settings().accounts.custom);
+  if (!count) {
+    showToast('コピーできる金額がありません（未入力の欄がないか、前の期が未入力です）');
+    return;
+  }
+  const undoable = keepUndo('copyPrev');
+  state.data.periods[i] = applyAccountTotalsToPeriod(period, settings());
+  renderForm();
+  update();
+  saveNow();
+  showUndoToast(`「${periodName(prev, i - 1)}」から${count}項目をコピーしました`, undoable);
 }
 
 export function onMovePeriod(delta) {

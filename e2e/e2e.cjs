@@ -289,6 +289,32 @@ async function shot(page, name) {
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
       });
 
+      await step('入力の補助：未入力の主な科目・前の期からコピー・入力中の桁区切り', async () => {
+        await page.click('#tab-input');
+        const chips = () => page.$$('#periodChips .chip:not(.chip-add)');
+        const n0 = (await chips()).length;
+        await page.click('#periodChips .chip-add');
+        assert.equal((await chips()).length, n0 + 1);
+        await page.waitForSelector('#missingFields:not([hidden])');
+        assert.match(await page.textContent('#missingFields'), /未入力の主な科目（11）/);
+        await page.click('#missingFields .missing-item >> text=売上高');
+        assert.equal(await page.evaluate(() => document.activeElement.id), 'f-pl-sales');
+        await page.keyboard.type('1234567');
+        assert.equal(await page.inputValue('#f-pl-sales'), '1,234,567');
+        await page.click('#btnCopyPrev');
+        await page.waitForSelector('#toast.show .toast-action');
+        assert.equal(await page.inputValue('#f-pl-sales'), '1,234,567', '入力済みの欄は変えない');
+        assert.notEqual(await page.inputValue('#f-bs-cash'), '');
+        assert.equal(await page.isHidden('#missingFields'), true);
+        await shot(page, 'input-assist');
+        await page.click('#toast .toast-action');
+        await page.waitForTimeout(200);
+        assert.equal(await page.inputValue('#f-bs-cash'), '');
+        await page.click('#btnRemovePeriod');
+        await page.waitForTimeout(200);
+        assert.equal((await chips()).length, n0);
+      });
+
       await step('保存できないときは画面上部に常に警告を出す', async () => {
         await page.evaluate(() => { Storage.prototype.setItem = () => { throw new Error('QuotaExceededError'); }; });
         const name = page.locator('#companyName');
