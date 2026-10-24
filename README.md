@@ -258,7 +258,19 @@
 | js/changelog.js | 更新履歴と、前回のバージョンからの変更点の抽出（純粋関数） |
 | js/help.js | 免責事項・プライバシー・ライセンスの文言、初回ガイド、指標のヘルプ（DOM に依存しない純粋関数） |
 | js/settings.js | 設定（表示単位・科目・指標・桁数など）の既定値・正規化・変更・内訳科目の合計計算（DOM に依存しない純粋関数） |
-| js/ui.js | 画面描画・イベント処理 |
+| js/ui.js | 画面処理の入口（js/ui/app.js の init を呼ぶだけ） |
+| js/ui/core.js | 画面共通の状態（state）・表示ヘルパー・保存・通知 |
+| js/ui/app.js | 画面の切り替え（setView）・全体の再描画（update）・起動（init） |
+| js/ui/input.js | 入力タブ（サマリー・PL/BS入力・分析結果・警告） |
+| js/ui/adjustments.js | 正常化EBITDAの調整項目 |
+| js/ui/netdebt.js | 運転資本・ネットデット |
+| js/ui/compare.js | 比較タブ（比較表・推移グラフ） |
+| js/ui/diagram.js | 図解タブ |
+| js/ui/report.js | CSV出力・印刷用レポート・すべてのデータを削除 |
+| js/ui/settings-view.js | 設定タブ（各設定画面・評価基準） |
+| js/ui/dialogs.js | ダイアログ（「?」ヘルプ・初回ガイド・更新履歴） |
+| js/ui/nav.js | 項目へのジャンプメニュー |
+| js/ui/backup.js | バックアップ・復元・サンプル・クリア・元に戻す・コピー |
 | js/pwa.js | Service Worker の登録・更新の案内、保存データの永続化要求 |
 | sw.js | Service Worker（アプリ本体のキャッシュ・オフライン起動） |
 | manifest.webmanifest | Web アプリマニフェスト（名前・アイコン・表示方法） |
