@@ -3,7 +3,7 @@
 import { PL_FIELDS, BS_FIELDS, MAX_PERIODS, ADJUSTMENT_CATEGORIES, isNum } from './calc.js';
 
 export const STORAGE_KEY = 'finAnalysisTool.data';
-export const CURRENT_VERSION = 2;
+export const CURRENT_VERSION = 3;
 
 function defaultStorage() {
   try {
@@ -27,6 +27,7 @@ export function createEmptyPeriod(label = '') {
     bs: emptyFields(BS_FIELDS),
     adjustments: [],
     debtLikeItems: [],
+    cashLikeItems: [],
   };
 }
 
@@ -64,7 +65,13 @@ export function getSampleData() {
             amount: -800, memo: '現行賃料が近隣相場より年800千円低い',
           },
         ],
-        debtLikeItems: [],
+        debtLikeItems: [
+          { id: 'sample-2025-d1', name: '退職給付引当金', amount: 3000, memo: '従業員の退職金は将来の支払義務であり、実質的な債務とみなす' },
+          { id: 'sample-2025-d2', name: '未払法人税等', amount: 1500, memo: '決算後2か月以内に納付予定' },
+        ],
+        cashLikeItems: [
+          { id: 'sample-2025-c1', name: '定期預金', amount: 2000, memo: '固定資産（投資その他の資産）に計上。中途解約可能' },
+        ],
       },
     ],
   };
@@ -73,7 +80,12 @@ export function getSampleData() {
 // 複数期のサンプル（最終期は getSampleData と同じ数値）
 export function getSampleMultiData() {
   const latest = getSampleData();
-  const period = (label, pl, bs, adjustments = []) => ({ label, pl, bs, adjustments, debtLikeItems: [] });
+  const period = (label, pl, bs, adjustments = [], debtLikeItems = [], cashLikeItems = []) => ({
+    label, pl, bs, adjustments, debtLikeItems, cashLikeItems,
+  });
+  const retirement = (id, amount) => ({
+    id, name: '退職給付引当金', amount, memo: '従業員の退職金は将来の支払義務であり、実質的な債務とみなす',
+  });
   const execComp = (id) => ({
     id, category: 'executiveComp', description: 'オーナー役員報酬を市場水準に調整',
     amount: 2500, memo: '現行の役員報酬17,500千円に対し、同規模企業の水準を15,000千円と想定',
@@ -88,7 +100,7 @@ export function getSampleMultiData() {
         cash: 14000, receivables: 13500, inventory: 9800, currentAssets: 42000,
         fixedAssets: 48000, totalAssets: 90000, payables: 7200, currentLiabilities: 30000,
         fixedLiabilities: 32000, interestBearingDebt: 44000, netAssets: 28000,
-      }, [execComp('sample-2023-1')]),
+      }, [execComp('sample-2023-1')], [retirement('sample-2023-d1', 2600)]),
       period('2024/3期', {
         sales: 91000, costOfSales: 55510, sga: 28000, operatingIncome: 7490,
         ordinaryIncome: 6600, netIncome: 4200, depreciation: 4600, interestExpense: 1100,
@@ -102,6 +114,8 @@ export function getSampleMultiData() {
           id: 'sample-2024-2', category: 'oneTime', description: '一時的な補助金収入（営業利益に計上）',
           amount: -1500, memo: '設備導入補助金。継続性なし',
         },
+      ], [retirement('sample-2024-d1', 2800)], [
+        { id: 'sample-2024-c1', name: '定期預金', amount: 2000, memo: '固定資産（投資その他の資産）に計上。中途解約可能' },
       ]),
       ...latest.periods,
     ],
@@ -144,6 +158,24 @@ function normalizeAdjustment(a) {
   };
 }
 
+export function createLineItem(name = '') {
+  return { id: newAdjustmentId().replace(/^adj-/, 'item-'), name, amount: null, memo: '' };
+}
+
+function normalizeLineItem(a) {
+  if (!isPlainObject(a)) return null;
+  return {
+    id: typeof a.id === 'string' && a.id ? a.id : newAdjustmentId().replace(/^adj-/, 'item-'),
+    name: typeof a.name === 'string' ? a.name : '',
+    amount: isNum(a.amount) ? a.amount : null,
+    memo: typeof a.memo === 'string' ? a.memo : '',
+  };
+}
+
+function normalizeLineItems(list) {
+  return Array.isArray(list) ? list.map(normalizeLineItem).filter(Boolean) : [];
+}
+
 function normalizePeriod(p) {
   if (!isPlainObject(p)) return null;
   return {
@@ -151,7 +183,8 @@ function normalizePeriod(p) {
     pl: normalizeFields(p.pl, PL_FIELDS),
     bs: normalizeFields(p.bs, BS_FIELDS),
     adjustments: Array.isArray(p.adjustments) ? p.adjustments.map(normalizeAdjustment).filter(Boolean) : [],
-    debtLikeItems: Array.isArray(p.debtLikeItems) ? p.debtLikeItems : [],
+    debtLikeItems: normalizeLineItems(p.debtLikeItems),
+    cashLikeItems: normalizeLineItems(p.cashLikeItems),
   };
 }
 
@@ -172,8 +205,23 @@ export function migrate(raw) {
   if (!isPlainObject(raw)) return null;
   let data = raw;
   if (data.version === 1) data = migrateV1toV2(data);
+  if (data.version === 2) data = migrateV2toV3(data);
   if (data.version === CURRENT_VERSION) return data;
   return null;
+}
+
+// version 2 → 3：キャッシュライク項目（cashLikeItems）を追加し、
+// デットライク項目（debtLikeItems）を { id, name, amount, memo } の形にそろえる。
+export function migrateV2toV3(v2) {
+  return {
+    ...v2,
+    version: 3,
+    periods: Array.isArray(v2.periods)
+      ? v2.periods.map((p) => (isPlainObject(p)
+        ? { ...p, debtLikeItems: normalizeLineItems(p.debtLikeItems), cashLikeItems: normalizeLineItems(p.cashLikeItems) }
+        : p))
+      : v2.periods,
+  };
 }
 
 // version 1 → 2：調整項目（adjustments）を { id, category, description, amount, memo } の形にそろえる。
@@ -273,7 +321,7 @@ export const BACKUP_FORMAT_VERSION = 1;
 export const LAST_BACKUP_KEY = 'finAnalysisTool.lastBackupAt';
 export const BACKUP_REMINDER_DAYS = 30;
 
-const SUPPORTED_DATA_VERSIONS = [1, 2];
+const SUPPORTED_DATA_VERSIONS = [1, 2, 3];
 
 export function createBackup(data, now = new Date()) {
   return {
@@ -326,7 +374,7 @@ export function validateData(raw) {
     if (p.label !== undefined && typeof p.label !== 'string') errors.push(`${where}.label が文字列ではありません`);
     checkFields(p.pl, PL_FIELDS, `${where}.pl`, errors);
     checkFields(p.bs, BS_FIELDS, `${where}.bs`, errors);
-    for (const k of ['adjustments', 'debtLikeItems']) {
+    for (const k of ['adjustments', 'debtLikeItems', 'cashLikeItems']) {
       if (p[k] !== undefined && !Array.isArray(p[k])) errors.push(`${where}.${k} が配列ではありません`);
     }
     if (Array.isArray(p.adjustments)) {
@@ -339,6 +387,20 @@ export function validateData(raw) {
         if (a.amount !== undefined && a.amount !== null && !isNum(a.amount)) errors.push(`${w}.amount が数値ではありません`);
         if (a.category !== undefined && !CATEGORY_IDS.has(a.category)) errors.push(`${w}.category が不明な区分です`);
         for (const k of ['description', 'memo']) {
+          if (a[k] !== undefined && typeof a[k] !== 'string') errors.push(`${w}.${k} が文字列ではありません`);
+        }
+      });
+    }
+    for (const key of ['debtLikeItems', 'cashLikeItems']) {
+      if (!Array.isArray(p[key])) continue;
+      p[key].forEach((a, j) => {
+        const w = `${where}.${key}[${j}]`;
+        if (!isPlainObject(a)) {
+          errors.push(`${w} が不正です`);
+          return;
+        }
+        if (a.amount !== undefined && a.amount !== null && !isNum(a.amount)) errors.push(`${w}.amount が数値ではありません`);
+        for (const k of ['name', 'memo']) {
           if (a[k] !== undefined && typeof a[k] !== 'string') errors.push(`${w}.${k} が文字列ではありません`);
         }
       });
@@ -427,4 +489,26 @@ export function updateAdjustment(data, periodIndex, id, changes) {
 
 export function removeAdjustment(data, periodIndex, id) {
   return updatePeriod(data, periodIndex, (p) => ({ ...p, adjustments: p.adjustments.filter((a) => a.id !== id) }));
+}
+
+// ---- デットライク・キャッシュライク項目の操作（listKey = 'debtLikeItems' | 'cashLikeItems'） ----
+
+const LINE_LISTS = ['debtLikeItems', 'cashLikeItems'];
+
+export function addLineItem(data, periodIndex, listKey, item = createLineItem()) {
+  if (!LINE_LISTS.includes(listKey)) return data;
+  return updatePeriod(data, periodIndex, (p) => ({ ...p, [listKey]: [...(p[listKey] ?? []), item] }));
+}
+
+export function updateLineItem(data, periodIndex, listKey, id, changes) {
+  if (!LINE_LISTS.includes(listKey)) return data;
+  return updatePeriod(data, periodIndex, (p) => ({
+    ...p,
+    [listKey]: (p[listKey] ?? []).map((a) => (a.id === id ? { ...a, ...changes } : a)),
+  }));
+}
+
+export function removeLineItem(data, periodIndex, listKey, id) {
+  if (!LINE_LISTS.includes(listKey)) return data;
+  return updatePeriod(data, periodIndex, (p) => ({ ...p, [listKey]: (p[listKey] ?? []).filter((a) => a.id !== id) }));
 }

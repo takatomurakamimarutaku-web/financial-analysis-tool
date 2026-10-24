@@ -474,6 +474,12 @@ export function buildComparison(data, basis = 'end') {
       cells: makeCells((p) => amountResult(r.get(calcNormalizedEbitda(p)))),
     });
   }
+  for (const r of NET_DEBT_ROWS) {
+    rows.push({
+      id: r.id, name: r.name, unit: r.unit, group: 'ma', averageable: false,
+      cells: makeCells((p) => r.get(p)),
+    });
+  }
   return { labels: periods.map((p) => p.label), rows };
 }
 
@@ -555,3 +561,128 @@ export function buildEbitdaBridge(data) {
   ];
   return { labels: periods.map((p) => p.label), rows };
 }
+
+// ---- 運転資本・ネットデット（Phase 4） ----
+
+export const DEBT_LIKE_EXAMPLES = ['退職給付引当金', '未払法人税等', 'リース債務', '未払配当', '役員退職慰労引当金'];
+export const CASH_LIKE_EXAMPLES = ['定期預金', '換金性の高い有価証券', '保険積立金'];
+
+// 運転資本（トレード）= 売上債権 + 棚卸資産 − 仕入債務
+export function calcWorkingCapital(period) {
+  const { pl, bs } = toCtx(period);
+  const amount = diff(sumOf(bs.receivables, bs.inventory), bs.payables);
+  return { amount, ratio: safeDiv(amount, pl.sales) };
+}
+
+// 全期の運転資本の推移と平均
+// average = 運転資本が計算できた期の単純平均。averageRatio = 平均運転資本 ÷ 同じ期の平均売上高
+export function calcWorkingCapitalSeries(data) {
+  const periods = data?.periods ?? [];
+  const items = periods.map(calcWorkingCapital);
+  const usable = periods.map((p, i) => ({ wc: items[i].amount, sales: toCtx(p).pl.sales })).filter((x) => isNum(x.wc));
+  const average = usable.length ? usable.reduce((s, x) => s + x.wc, 0) / usable.length : null;
+  const salesOk = usable.length > 0 && usable.every((x) => isNum(x.sales));
+  const avgSales = salesOk ? usable.reduce((s, x) => s + x.sales, 0) / usable.length : null;
+  return {
+    labels: periods.map((p) => p.label),
+    items,
+    average,
+    averageRatio: safeDiv(average, avgSales),
+    periodsUsed: usable.length,
+  };
+}
+
+function itemTotal(list) {
+  const items = Array.isArray(list) ? list : [];
+  return items.reduce((s, x) => s + (isNum(x?.amount) ? x.amount : 0), 0);
+}
+
+// 調整後ネットデット = 有利子負債 + デットライク項目 − 現預金 − キャッシュライク項目
+// 金額が未入力の項目は合計に含めない（警告の対象）。
+export function calcAdjustedNetDebt(period) {
+  const ctx = toCtx(period);
+  const debtLikeTotal = itemTotal(period?.debtLikeItems);
+  const cashLikeTotal = itemTotal(period?.cashLikeItems);
+  const base = netDebt(ctx);
+  const adjusted = isNum(base) ? base + debtLikeTotal - cashLikeTotal : null;
+  const normalized = calcNormalizedEbitda(period).normalized;
+  let multiple;
+  if (isNum(normalized) && normalized < 0) multiple = { value: null, status: 'notApplicable' };
+  else {
+    const v = safeDiv(adjusted, normalized);
+    multiple = isNum(v) ? { value: v, status: 'ok' } : { value: null, status: 'na' };
+  }
+  return {
+    interestBearingDebt: isNum(ctx.bs.interestBearingDebt) ? ctx.bs.interestBearingDebt : null,
+    cash: isNum(ctx.bs.cash) ? ctx.bs.cash : null,
+    debtLikeTotal,
+    cashLikeTotal,
+    netDebt: base,
+    adjusted,
+    normalizedEbitda: normalized,
+    multiple,
+  };
+}
+
+// デットライク・キャッシュライク項目の警告
+export function getNetDebtItemWarnings(period) {
+  const warnings = [];
+  for (const [key, kind] of [['debtLikeItems', 'デットライク'], ['cashLikeItems', 'キャッシュライク']]) {
+    const items = Array.isArray(period?.[key]) ? period[key] : [];
+    items.forEach((item, index) => {
+      const label = item?.name ? `「${item.name}」` : `${index + 1}件目`;
+      if (!String(item?.memo ?? '').trim()) {
+        warnings.push({ type: 'memoMissing', list: key, index, message: `${kind}項目${label}：根拠未記載` });
+      }
+      if (!isNum(item?.amount)) {
+        warnings.push({ type: 'amountMissing', list: key, index, message: `${kind}項目${label}：金額未入力（合計に含めていません）` });
+      }
+    });
+  }
+  return warnings;
+}
+
+// ネットデット内訳（行 = 有利子負債・各デットライク項目・現預金・各キャッシュライク項目・調整後ネットデット等、列 = 各期）
+// 項目は名称ごとに全期をそろえる。現預金・キャッシュライク項目は減算として負の値で持つ。
+export function buildNetDebtBreakdown(data) {
+  const periods = data?.periods ?? [];
+  const names = (key) => {
+    const seen = [];
+    for (const p of periods) {
+      for (const it of (Array.isArray(p[key]) ? p[key] : [])) {
+        const n = String(it?.name ?? '').trim() || '（名称未入力）';
+        if (!seen.includes(n)) seen.push(n);
+      }
+    }
+    return seen;
+  };
+  const sumByName = (p, key, name, sign) => {
+    const items = (Array.isArray(p[key]) ? p[key] : [])
+      .filter((it) => (String(it?.name ?? '').trim() || '（名称未入力）') === name);
+    if (!items.length) return null;
+    return sign * items.reduce((s, it) => s + (isNum(it.amount) ? it.amount : 0), 0);
+  };
+  const calcs = periods.map(calcAdjustedNetDebt);
+  const rows = [
+    { id: 'interestBearingDebt', name: '有利子負債', kind: 'base', values: calcs.map((c) => c.interestBearingDebt) },
+    ...names('debtLikeItems').map((n) => ({
+      id: `debt:${n}`, name: `${n}（加算）`, kind: 'debtLike', values: periods.map((p) => sumByName(p, 'debtLikeItems', n, 1)),
+    })),
+    { id: 'cash', name: '現預金（減算）', kind: 'cash', values: calcs.map((c) => (isNum(c.cash) ? -c.cash : null)) },
+    ...names('cashLikeItems').map((n) => ({
+      id: `cashLike:${n}`, name: `${n}（減算）`, kind: 'cashLike', values: periods.map((p) => sumByName(p, 'cashLikeItems', n, -1)),
+    })),
+    { id: 'netDebt', name: '（参考）ネットデット', kind: 'reference', values: calcs.map((c) => c.netDebt) },
+    { id: 'adjustedNetDebt', name: '調整後ネットデット', kind: 'total', values: calcs.map((c) => c.adjusted) },
+    { id: 'normalizedEbitda', name: '正常化EBITDA', kind: 'reference', values: calcs.map((c) => c.normalizedEbitda) },
+  ];
+  return { labels: periods.map((p) => p.label), rows, multiples: calcs.map((c) => c.multiple) };
+}
+
+// 比較表に追加する運転資本・ネットデットの行（Phase 4）
+export const NET_DEBT_ROWS = [
+  { id: 'workingCapital', name: '運転資本（トレード）', unit: '千円', get: (p) => amountResult(calcWorkingCapital(p).amount) },
+  { id: 'workingCapitalRatio', name: '運転資本 ÷ 売上高', unit: '%', get: (p) => amountResult(calcWorkingCapital(p).ratio) },
+  { id: 'adjustedNetDebt', name: '調整後ネットデット', unit: '千円', get: (p) => amountResult(calcAdjustedNetDebt(p).adjusted) },
+  { id: 'adjustedNetDebtToNormalizedEbitda', name: '調整後ネットデット ÷ 正常化EBITDA', unit: '倍', get: (p) => calcAdjustedNetDebt(p).multiple },
+];

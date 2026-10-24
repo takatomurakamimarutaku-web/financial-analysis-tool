@@ -22,10 +22,10 @@ function throwingStorage() {
 }
 
 describe('初期データ', () => {
-  test('createEmptyData は最新 version（Phase 3 以降は 2）・1期・全項目 null', () => {
+  test('createEmptyData は最新 version（Phase 4 以降は 3）・1期・全項目 null', () => {
     const d = createEmptyData();
-    assert.equal(d.version, 2);
-    assert.equal(CURRENT_VERSION, 2);
+    assert.equal(d.version, 3);
+    assert.equal(CURRENT_VERSION, 3);
     assert.equal(d.companyName, '');
     assert.equal(d.periods.length, 1);
     const p = d.periods[0];
@@ -35,6 +35,7 @@ describe('初期データ', () => {
     assert.ok(Object.values(p.bs).every((v) => v === null));
     assert.deepEqual(p.adjustments, []);
     assert.deepEqual(p.debtLikeItems, []);
+    assert.deepEqual(p.cashLikeItems, []);
   });
   test('createEmptyPeriod はラベルを保持', () => {
     assert.equal(createEmptyPeriod('2024/3期').label, '2024/3期');

@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  INDICATORS, KEY_AMOUNTS, NORMALIZED_ROWS, CHART_ROWS, MAX_PERIODS,
+  INDICATORS, KEY_AMOUNTS, NORMALIZED_ROWS, NET_DEBT_ROWS, CHART_ROWS, MAX_PERIODS,
   calcIndicators, averageBs, changeOf, formatChangeAmount, formatChangeRate, buildComparison,
 } from '../js/calc.js';
 import {
@@ -130,10 +130,10 @@ describe('平均残高ベース', () => {
 });
 
 describe('buildComparison（比較表）', () => {
-  test('行 = 主要数値 + 全指標 + 正常化EBITDA、列 = 各期', () => {
+  test('行 = 主要数値 + 全指標 + 正常化EBITDA + 運転資本・ネットデット、列 = 各期', () => {
     const cmp = buildComparison(getSampleMultiData());
     assert.deepEqual(cmp.labels, ['2023/3期', '2024/3期', '2025/3期']);
-    assert.equal(cmp.rows.length, KEY_AMOUNTS.length + INDICATORS.length + NORMALIZED_ROWS.length);
+    assert.equal(cmp.rows.length, KEY_AMOUNTS.length + INDICATORS.length + NORMALIZED_ROWS.length + NET_DEBT_ROWS.length);
     for (const row of cmp.rows) assert.equal(row.cells.length, 3, row.id);
     for (const id of CHART_ROWS) assert.ok(cmp.rows.find((r) => r.id === id), id);
   });

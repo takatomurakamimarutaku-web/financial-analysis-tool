@@ -186,26 +186,26 @@ describe('データ移行 version 1 → 2', () => {
     assert.equal(a.description, '');
     assert.equal(typeof a.id, 'string');
   });
-  test('migrate：v1 → v2、v2 はそのまま、未知は null', () => {
+  test('migrate：v1 → 最新 version、最新はそのまま、未知は null', () => {
     assert.equal(migrate(v1()).version, CURRENT_VERSION);
-    const v2 = getSampleData();
-    assert.equal(migrate(v2), v2);
-    assert.equal(migrate({ ...v2, version: 3 }), null);
+    const latest = getSampleData();
+    assert.equal(migrate(latest), latest);
+    assert.equal(migrate({ ...latest, version: 99 }), null);
   });
-  test('localStorage の v1 データを読み込むと v2 になる', () => {
+  test('localStorage の v1 データを読み込むと最新 version になる', () => {
     const map = new Map([[STORAGE_KEY, JSON.stringify(v1())]]);
     const st = { getItem: (k) => map.get(k) ?? null, setItem: (k, v) => map.set(k, v), removeItem: (k) => map.delete(k) };
     const { data, error } = loadData(st);
     assert.equal(error, null);
-    assert.equal(data.version, 2);
+    assert.equal(data.version, CURRENT_VERSION);
     assert.equal(data.periods[0].pl.sales, 1000);
     assert.equal(calcNormalizedEbitda(data.periods[0]).normalized, 120);
   });
-  test('v1 のバックアップファイルも復元できる（v2 に移行）', () => {
+  test('v1 のバックアップファイルも復元できる（最新 version に移行）', () => {
     const text = JSON.stringify({ format: 'finAnalysisTool-backup', formatVersion: 1, exportedAt: '2026-10-01T00:00:00Z', data: v1() });
     const r = parseBackup(text);
     assert.equal(r.ok, true);
-    assert.equal(r.data.version, 2);
+    assert.equal(r.data.version, CURRENT_VERSION);
   });
   test('v2 のバックアップは調整項目を含めて往復できる', () => {
     const d = getSampleMultiData();

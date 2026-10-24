@@ -4,6 +4,8 @@ import {
   calcIndicators, getWarnings, formatValue, buildResultText, parseAmount, isNum,
   buildComparison, formatChangeAmount, formatChangeRate,
   ADJUSTMENT_CATEGORIES, calcNormalizedEbitda, getAdjustmentWarnings, buildEbitdaBridge, formatAmount,
+  DEBT_LIKE_EXAMPLES, CASH_LIKE_EXAMPLES, calcWorkingCapital, calcWorkingCapitalSeries,
+  calcAdjustedNetDebt, getNetDebtItemWarnings, buildNetDebtBreakdown,
 } from './calc.js';
 import {
   loadData, saveData, createEmptyData, getSampleMultiData,
@@ -11,6 +13,7 @@ import {
   backupToJson, backupFileName, parseBackup, getLastBackupAt, setLastBackupAt,
   needsBackupReminder, hasAnyData,
   createAdjustment, addAdjustment, removeAdjustment,
+  createLineItem, addLineItem, removeLineItem,
 } from './store.js';
 import { buildLineChartSvg } from './chart.js';
 import { registerServiceWorker, requestPersistentStorage } from './pwa.js';
@@ -139,6 +142,7 @@ function renderForm() {
   renderAmountFields('plFields', 'pl', PL_FIELDS);
   renderAmountFields('bsFields', 'bs', BS_FIELDS);
   renderAdjustments();
+  renderNetDebtInputs();
 }
 
 function onFieldInput(e) {
@@ -399,6 +403,186 @@ function renderBridgeTable() {
   table.append(tbody);
 }
 
+// ---- 運転資本・ネットデット ----
+
+const LINE_LISTS = [
+  { key: 'debtLikeItems', container: 'debtLikeList', datalist: 'debtLikeExamples', kind: 'デットライク' },
+  { key: 'cashLikeItems', container: 'cashLikeList', datalist: 'cashLikeExamples', kind: 'キャッシュライク' },
+];
+
+function pctText(v) {
+  return formatValue({ value: v, status: isNum(v) ? 'ok' : 'na' }, '%');
+}
+
+function amountText(v) {
+  return isNum(v) ? `${formatAmount(v)}千円` : '—';
+}
+
+function renderNetDebtInputs() {
+  const p = currentPeriod();
+  $('ndPeriodName').textContent = periodName(p, state.selected);
+  for (const def of LINE_LISTS) {
+    const list = $(def.container);
+    list.replaceChildren();
+    (p[def.key] ?? []).forEach((it, i) => {
+      const idBase = `${def.key}-${i}`;
+      const name = el('input', { id: `${idBase}-name`, type: 'text', autocomplete: 'off', list: def.datalist, placeholder: '名称' });
+      name.value = it.name;
+      name.addEventListener('input', () => { it.name = name.value; onNetDebtChanged(); });
+
+      const amount = el('input', { id: `${idBase}-amt`, type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: '千円' });
+      amount.value = formatInput(it.amount);
+      amount.addEventListener('input', () => {
+        const text = amount.value.trim();
+        it.amount = parseAmount(text);
+        amount.setAttribute('aria-invalid', text !== '' && it.amount === null ? 'true' : 'false');
+        onNetDebtChanged();
+      });
+      amount.addEventListener('blur', () => { if (isNum(it.amount)) amount.value = formatInput(it.amount); });
+      const sign = el('button', { type: 'button', className: 'sign-btn', 'aria-label': '金額の符号を反転', text: '±' });
+      sign.addEventListener('click', () => {
+        if (!isNum(it.amount)) {
+          amount.value = '-';
+          amount.focus();
+          return;
+        }
+        it.amount = -it.amount;
+        amount.value = formatInput(it.amount);
+        onNetDebtChanged();
+      });
+
+      const memo = el('textarea', { id: `${idBase}-memo`, rows: '2', placeholder: '根拠メモ（例：債務とみなす理由、換金性の根拠）' });
+      memo.value = it.memo;
+      memo.addEventListener('input', () => { it.memo = memo.value; onNetDebtChanged(); });
+
+      const remove = el('button', { type: 'button', className: 'btn btn-danger btn-small', text: '削除' });
+      remove.addEventListener('click', () => {
+        const label = it.name ? `「${it.name}」` : 'この項目';
+        if (!window.confirm(`${label}を削除します。よろしいですか？`)) return;
+        state.data = removeLineItem(state.data, state.selected, def.key, it.id);
+        renderNetDebtInputs();
+        onNetDebtChanged();
+      });
+
+      list.append(el('div', { className: 'adj-item', 'data-list': def.key }, [
+        el('label', { className: 'field', for: name.id }, [el('span', { className: 'field-label', text: '名称' }), name]),
+        el('div', { className: 'field' }, [
+          el('label', { className: 'field-label', for: amount.id, text: '金額（千円）' }),
+          el('div', { className: 'adj-amount' }, [amount, sign]),
+        ]),
+        el('label', { className: 'field', for: memo.id }, [el('span', { className: 'field-label', text: '根拠メモ' }), memo]),
+        el('div', { className: 'adj-foot' }, [el('span', { className: 'adj-badges' }), remove]),
+      ]));
+    });
+  }
+  renderNetDebtSummary();
+}
+
+// 入力欄は作り直さず、警告と集計表だけを更新する
+function renderNetDebtSummary() {
+  const p = currentPeriod();
+  const warnings = getNetDebtItemWarnings(p);
+  const box = $('ndWarnings');
+  box.replaceChildren();
+  const memoCount = warnings.filter((w) => w.type === 'memoMissing').length;
+  if (memoCount) box.append(el('div', { className: 'warning', text: `根拠未記載のデットライク・キャッシュライク項目が${memoCount}件あります` }));
+  for (const def of LINE_LISTS) {
+    $(def.container).querySelectorAll('.adj-item').forEach((node, i) => {
+      const mine = warnings.filter((w) => w.list === def.key && w.index === i);
+      node.classList.toggle('warn', mine.length > 0);
+      node.querySelector('.adj-badges').replaceChildren(...mine.map((w) => el('span', {
+        className: 'badge-warn',
+        text: w.type === 'memoMissing' ? '根拠未記載' : '金額未入力',
+      })));
+    });
+  }
+
+  const row = (name, value, cls = '') => el('tr', { className: cls }, [el('th', { scope: 'row', text: name }), el('td', { text: value })]);
+  const wc = calcWorkingCapital(p);
+  const bs = p.bs;
+  $('wcSingle').replaceChildren(
+    row('売上債権', amountText(bs.receivables), 'indent'),
+    row('＋ 棚卸資産', amountText(bs.inventory), 'indent'),
+    row('− 仕入債務', amountText(bs.payables), 'indent'),
+    row('運転資本', amountText(wc.amount), 'total'),
+    row('売上高に対する比率', pctText(wc.ratio)),
+  );
+
+  const nd = calcAdjustedNetDebt(p);
+  $('ndSingle').replaceChildren(
+    row('有利子負債', amountText(nd.interestBearingDebt)),
+    row('＋ デットライク項目', amountText(nd.debtLikeTotal), 'indent'),
+    row('− 現預金', amountText(nd.cash), 'indent'),
+    row('− キャッシュライク項目', amountText(nd.cashLikeTotal), 'indent'),
+    row('調整後ネットデット', amountText(nd.adjusted), 'total'),
+    row('正常化EBITDA', amountText(nd.normalizedEbitda)),
+    row('調整後ネットデット ÷ 正常化EBITDA', formatValue(nd.multiple, '倍')),
+  );
+}
+
+function onNetDebtChanged() {
+  renderNetDebtSummary();
+  if (state.view === 'compare') renderCompare();
+  scheduleSave();
+}
+
+function onAddLineItem(def) {
+  state.data = addLineItem(state.data, state.selected, def.key, createLineItem());
+  renderNetDebtInputs();
+  onNetDebtChanged();
+  const items = $(def.container).querySelectorAll('.adj-item');
+  items[items.length - 1]?.querySelector('input')?.focus();
+}
+
+function headRowFor(labels, extra = []) {
+  const head = el('tr', {}, [el('th', { className: 'row-head', scope: 'col', text: '項目' })]);
+  labels.forEach((l, i) => head.append(el('th', { scope: 'col', text: l || `第${i + 1}期` })));
+  for (const x of extra) head.append(el('th', { scope: 'col', className: 'avg-col', text: x }));
+  return el('thead', {}, [head]);
+}
+
+function valueCell(text, v, cls = '') {
+  return el('td', { className: cls }, [el('span', { className: `cell-value${isNum(v) ? (v < 0 ? ' negative' : '') : ' na'}`, text })]);
+}
+
+function renderWorkingCapitalTable() {
+  const s = calcWorkingCapitalSeries(state.data);
+  const periods = state.data.periods;
+  const table = $('wcTable');
+  table.replaceChildren(headRowFor(s.labels, ['参考：平均']));
+  const tbody = el('tbody');
+  const line = (name, values, avg, fmt, cls = '') => {
+    const tr = el('tr', { className: cls }, [el('th', { className: 'row-head', scope: 'row', text: name })]);
+    values.forEach((v) => tr.append(valueCell(fmt(v), v)));
+    tr.append(valueCell(avg === undefined ? '' : fmt(avg), avg ?? null, 'avg-col'));
+    tbody.append(tr);
+  };
+  const amt = (v) => (isNum(v) ? formatAmount(v) : '—');
+  line('売上債権', periods.map((p) => p.bs.receivables), undefined, amt, 'indent');
+  line('＋ 棚卸資産', periods.map((p) => p.bs.inventory), undefined, amt, 'indent');
+  line('− 仕入債務', periods.map((p) => p.bs.payables), undefined, amt, 'indent');
+  line('運転資本', s.items.map((x) => x.amount), s.average, amt, 'total');
+  line('売上高に対する比率', s.items.map((x) => x.ratio), s.averageRatio, pctText);
+  table.append(tbody);
+}
+
+function renderNetDebtTable() {
+  const b = buildNetDebtBreakdown(state.data);
+  const table = $('ndTable');
+  table.replaceChildren(headRowFor(b.labels));
+  const tbody = el('tbody');
+  for (const r of b.rows) {
+    const cls = r.kind === 'total' ? 'total' : r.kind === 'reference' ? 'reference' : r.kind === 'base' ? '' : 'indent';
+    const tr = el('tr', { className: cls }, [el('th', { className: 'row-head', scope: 'row', text: r.name })]);
+    r.values.forEach((v) => tr.append(valueCell(isNum(v) ? formatAmount(v) : '—', v)));
+    tbody.append(tr);
+  }
+  const tr = el('tr', {}, [el('th', { className: 'row-head', scope: 'row', text: '調整後ネットデット ÷ 正常化EBITDA' })]);
+  b.multiples.forEach((m) => tr.append(valueCell(formatValue(m, '倍'), m.status === 'ok' ? m.value : null)));
+  tbody.append(tr);
+  table.append(tbody);
+}
+
 // ---- 比較タブ ----
 
 const GROUP_NAMES = { amounts: '主要数値（千円）', ...Object.fromEntries(CATEGORIES.map((c) => [c.id, c.name])) };
@@ -450,6 +634,8 @@ function renderCompare() {
   table.append(tbody);
 
   renderBridgeTable();
+  renderWorkingCapitalTable();
+  renderNetDebtTable();
   renderCharts(cmp);
 }
 
@@ -496,6 +682,7 @@ function update() {
   renderInputWarnings();
   renderInputResults();
   renderAdjustmentSummary();
+  renderNetDebtSummary();
   renderBackupStatus();
   if (state.view === 'compare') renderCompare();
   scheduleSave();
@@ -662,6 +849,7 @@ function init() {
     const chip = $('periodChips').children[state.selected];
     if (chip) chip.textContent = periodName(currentPeriod(), state.selected);
     $('adjPeriodName').textContent = periodName(currentPeriod(), state.selected);
+    $('ndPeriodName').textContent = periodName(currentPeriod(), state.selected);
     scheduleSave();
   });
   $('btnMoveLeft').addEventListener('click', () => onMovePeriod(-1));
@@ -680,6 +868,10 @@ function init() {
     renderCompare();
   });
   $('btnAddAdj').addEventListener('click', onAddAdjustment);
+  $('btnAddDebtLike').addEventListener('click', () => onAddLineItem(LINE_LISTS[0]));
+  $('btnAddCashLike').addEventListener('click', () => onAddLineItem(LINE_LISTS[1]));
+  $('debtLikeExamples').replaceChildren(...DEBT_LIKE_EXAMPLES.map((v) => el('option', { value: v })));
+  $('cashLikeExamples').replaceChildren(...CASH_LIKE_EXAMPLES.map((v) => el('option', { value: v })));
   $('btnExport').addEventListener('click', onExport);
   $('btnImport').addEventListener('click', onImportClick);
   $('importFile').addEventListener('change', onImportFile);

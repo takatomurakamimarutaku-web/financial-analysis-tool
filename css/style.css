@@ -409,3 +409,12 @@ input[type="text"]:focus { outline: 2px solid var(--primary); outline-offset: -1
 .bridge-table tr.total th, .bridge-table tr.total td { font-weight: 700; border-top: 2px solid var(--text); }
 .bridge-compare tr.indent .row-head { padding-left: 1.4em; color: var(--muted); }
 .bridge-compare tr.total th, .bridge-compare tr.total td { font-weight: 700; }
+
+/* ---- Phase 4：運転資本・ネットデット ---- */
+.netdebt .note { margin: 0 0 8px; }
+.netdebt .btn { margin-bottom: 4px; }
+.nd-warnings { margin-top: 12px; }
+.bridge-compare tr.reference th, .bridge-compare tr.reference td { color: var(--muted); }
+.bridge-compare td.avg-col, .bridge-compare th.avg-col { background: var(--bg); }
+/* 見出しの下に置く表は、見出しと重ならないよう上下の負のマージンをなくす */
+.panel-title ~ .table-scroll { margin: 8px -12px 0; border-radius: 0; }
