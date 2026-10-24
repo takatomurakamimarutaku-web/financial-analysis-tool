@@ -142,6 +142,33 @@ async function shot(page, name) {
       await page.click('#btnReportBack');
     });
 
+    await step(`キャッシュフロー（推計）が入力・比較・図解・レポートに出る${S}`, async () => {
+      await page.click('#tab-input');
+      await page.click('#periodChips .chip:not(.chip-add) >> nth=2');
+      const body = await page.textContent('#cfBody');
+      assert.match(body, /営業CF\+9,200/);
+      assert.match(body, /検算一致/);
+      assert.match(body, /3\.6年/);
+      await page.locator('#sec-cf').screenshot({ path: path.join(SHOT_DIR, `cf-input-${scheme}.png`) });
+      await page.click('#periodChips .chip:not(.chip-add) >> nth=0');
+      assert.match(await page.textContent('#cfBody'), /前の期がないため推計できません/);
+      await page.click('#periodChips .chip:not(.chip-add) >> nth=2');
+      await page.click('#tab-compare');
+      assert.ok(await page.locator('#cfChart rect.bar').count() >= 6);
+      assert.match(await page.textContent('#compareTable'), /キャッシュフロー（推計）/);
+      assert.match(await page.textContent('#compareTable'), /債務償還年数/);
+      await page.locator('#sec-cfc').screenshot({ path: path.join(SHOT_DIR, `cf-compare-${scheme}.png`) });
+      await page.click('#tab-diagram');
+      assert.match(await page.textContent('#dgCfInsight'), /本業で \+9,200千円/);
+      await page.locator('#sec-dg-cf').screenshot({ path: path.join(SHOT_DIR, `cf-diagram-${scheme}.png`) });
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+      await page.click('#tab-compare');
+      await page.click('#btnReport');
+      assert.match(await page.textContent('#report'), /キャッシュフロー（推計）/);
+      await page.click('#btnReportBack');
+      await page.click('#tab-input');
+    });
+
     if (scheme === 'light') {
       await step('レポート：作成者・所見・表紙・グラフ・ページ番号の設定が反映・保存される', async () => {
         await page.click('#tab-compare');

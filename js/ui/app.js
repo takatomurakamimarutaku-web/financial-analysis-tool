@@ -17,6 +17,7 @@ import {
   renderMissingFields, renderSummary,
 } from './input.js';
 import { renderSectionNav, updateNavHeight } from './nav.js';
+import { renderCashFlowInput } from './cashflow.js';
 import { LINE_LISTS, onAddLineItem, renderNetDebtSummary } from './netdebt.js';
 import { exportCsv, onDeleteAll, renderReport, renderReportOptions } from './report.js';
 import { renderSettings, toggle } from './settings-view.js';
@@ -55,6 +56,7 @@ export function update() {
   renderInputResults();
   renderAdjustmentSummary();
   renderNetDebtSummary();
+  renderCashFlowInput();
   renderBackupStatus();
   if (state.view === 'compare') renderCompare();
   if (state.view === 'diagram') renderDiagrams();

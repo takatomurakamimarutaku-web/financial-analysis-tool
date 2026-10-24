@@ -11,6 +11,7 @@ export const SECTION_NAV = {
     ['results', '分析結果'],
     ['sec-adj', '正常化EBITDA'],
     ['sec-nd', '運転資本・ネットデット'],
+    ['sec-cf', 'キャッシュフロー'],
     ['sec-backup', 'バックアップ'],
   ],
   diagram: [
@@ -20,6 +21,7 @@ export const SECTION_NAV = {
     ['sec-dg-bs', '財産と集め方'],
     ['sec-dg-ccc', 'お金の回収'],
     ['sec-dg-ebitda', '正常化EBITDA'],
+    ['sec-dg-cf', 'お金の流れ'],
     ['sec-dg-nd', '実質的な借入'],
   ],
   compare: [
@@ -28,6 +30,7 @@ export const SECTION_NAV = {
     ['sec-bridge', 'EBITDAブリッジ'],
     ['sec-wc', '運転資本'],
     ['sec-ndb', 'ネットデット'],
+    ['sec-cfc', 'CF'],
     ['sec-charts', 'グラフ'],
     ['sec-export', '出力'],
   ],

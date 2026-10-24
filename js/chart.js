@@ -84,3 +84,43 @@ export function buildLineChartSvg({ labels, values, format = String, tickFormat 
   parts.push('</svg>');
   return parts.join('');
 }
+
+// 期ごとの棒グラフ（複数系列を横に並べる）。series = [{ name, values: number|null[], cls }]。
+// 0 の線を基準に、プラスは上・マイナスは下に伸ばす。値が null の棒は描かない。
+export function buildBarChartSvg({ labels, series, tickFormat = String, title = '', width = 340, height = 200 }) {
+  const pad = { top: 16, right: 8, bottom: 28, left: 52 };
+  const w = width - pad.left - pad.right;
+  const h = height - pad.top - pad.bottom;
+  const nums = series.flatMap((s) => s.values).filter((v) => typeof v === 'number' && Number.isFinite(v));
+  const parts = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" class="chart bar-chart">`];
+  if (!nums.length) {
+    parts.push(`<text x="${width / 2}" y="${height / 2}" text-anchor="middle" class="chart-empty">データなし</text></svg>`);
+    return parts.join('');
+  }
+  const ticks = niceTicks(Math.min(0, ...nums), Math.max(0, ...nums));
+  const lo = ticks[0];
+  const hi = ticks[ticks.length - 1];
+  const y = (v) => pad.top + h - ((v - lo) / (hi - lo)) * h;
+  for (const t of ticks) {
+    const ty = y(t).toFixed(1);
+    parts.push(`<line x1="${pad.left}" x2="${pad.left + w}" y1="${ty}" y2="${ty}" class="chart-grid${t === 0 ? ' chart-zero' : ''}"/>`);
+    parts.push(`<text x="${pad.left - 6}" y="${ty}" dy="0.32em" text-anchor="end" class="chart-tick">${escapeXml(tickFormat(t))}</text>`);
+  }
+  const n = labels.length;
+  const slot = w / n;
+  const barW = Math.max(3, Math.min(18, (slot * 0.8) / series.length));
+  labels.forEach((l, i) => {
+    const cx = pad.left + slot * i + slot / 2;
+    parts.push(`<text x="${cx.toFixed(1)}" y="${height - 8}" text-anchor="middle" class="chart-label">${escapeXml(l)}</text>`);
+    series.forEach((s, j) => {
+      const v = s.values[i];
+      if (typeof v !== 'number' || !Number.isFinite(v)) return;
+      const x = cx - (barW * series.length) / 2 + barW * j;
+      const y0 = y(0);
+      const y1 = y(v);
+      parts.push(`<rect x="${x.toFixed(1)}" y="${Math.min(y0, y1).toFixed(1)}" width="${(barW - 1).toFixed(1)}" height="${Math.max(0.5, Math.abs(y1 - y0)).toFixed(1)}" class="bar ${escapeXml(s.cls ?? '')}"><title>${escapeXml(`${s.name} ${l}`)}</title></rect>`);
+    });
+  });
+  parts.push('</svg>');
+  return parts.join('');
+}

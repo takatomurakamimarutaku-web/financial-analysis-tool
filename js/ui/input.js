@@ -15,6 +15,7 @@ import {
   $, applyTheme, badgeEl, criterionBar, currentPeriod, days, el, evaluation, fa, fmt, formatInput, fv, saveNow, settings, showToast, state, unitName,
 } from './core.js';
 import { helpButton } from './dialogs.js';
+import { renderCashFlowInput } from './cashflow.js';
 import { renderNetDebtInputs } from './netdebt.js';
 import { toggle } from './settings-view.js';
 
@@ -200,6 +201,7 @@ export function renderForm() {
   renderAdjustments();
   renderNetDebtInputs();
   renderMissingFields();
+  renderCashFlowInput();
 }
 
 export function onFieldInput(e) {

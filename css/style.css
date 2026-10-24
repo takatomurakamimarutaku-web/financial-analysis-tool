@@ -1094,3 +1094,21 @@ body.reporting .company-bar { display: none; }
 .missing-head { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; }
 .missing-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .missing-item { font: inherit; font-size: 13px; padding: 4px 10px; min-height: 32px; border-radius: 16px; border: 1px solid var(--warn-border); background: var(--surface); color: var(--text); cursor: pointer; }
+
+/* ---- キャッシュフロー（推計） ---- */
+.cf-details { margin-top: 8px; }
+.cf-details summary { cursor: pointer; color: var(--primary); font-size: 14px; }
+.cf-simple { margin-top: 10px; }
+.cf-reason { margin: 0 0 8px; }
+.bridge-table tr.group th { font-weight: 600; padding-top: 8px; }
+.bar { stroke: none; }
+.bar-op { fill: var(--primary); }
+.bar-inv { fill: #e0a458; }
+.bar-fin { fill: #8a94a3; }
+.bar-fcf { fill: var(--accent, #0f766e); }
+.cf-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; font-size: 12px; color: var(--muted); margin: 4px 0; }
+.cf-key::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; background: currentColor; }
+.cf-key.bar-op::before { background: var(--primary); }
+.cf-key.bar-inv::before { background: #e0a458; }
+.cf-key.bar-fin::before { background: #8a94a3; }
+.cf-key.bar-fcf::before { background: var(--accent, #0f766e); }

@@ -230,7 +230,7 @@ export function formatOptions(settings, scope) {
     amountScale: u.scale,
     amountUnit: u.name,
     amountDigits: u.digits,
-    digits: { '%': s.digits?.pct ?? 1, '日': s.digits?.days ?? 1, '倍': s.digits?.times ?? 2, '回': s.digits?.times ?? 2 },
+    digits: { '%': s.digits?.pct ?? 1, '日': s.digits?.days ?? 1, '倍': s.digits?.times ?? 2, '回': s.digits?.times ?? 2, '年': 1 },
     negativeStyle: s.negativeStyle === 'triangle' ? 'triangle' : 'minus',
   };
 }

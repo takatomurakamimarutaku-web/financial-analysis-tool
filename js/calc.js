@@ -355,7 +355,7 @@ export function getWarnings(period, opts, plOpts = opts) {
   return warnings;
 }
 
-const DIGITS = { '%': 1, '日': 1, '倍': 2, '回': 2, '千円': 0 };
+const DIGITS = { '%': 1, '日': 1, '倍': 2, '回': 2, '千円': 0, '年': 1 };
 
 // 表示オプション（すべて省略可。省略時は千円・従来の桁数）
 // opts = { amountScale: 千円からの倍率, amountUnit: '円'|'千円'|'百万円', amountDigits, digits: { '%', '日', '倍', '回' } }

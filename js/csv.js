@@ -2,8 +2,9 @@
 // Excel で文字化けしないよう、BOM 付き UTF-8・改行は CRLF で出力する。
 // 金額は設定の「印刷用レポート・CSV」の単位（既定は千円）で出力する。
 import {
-  isNum, buildComparison, buildEbitdaBridge, buildNetDebtBreakdown, categoryName, CATEGORIES,
+  isNum, buildEbitdaBridge, buildNetDebtBreakdown, categoryName, CATEGORIES,
 } from './calc.js';
+import { CASH_FLOW_GROUP, buildComparisonWithCashFlow } from './cashflow.js';
 import { unitOf, arrangeComparisonRows, rowLabel } from './settings.js';
 
 export const BOM = '﻿';
@@ -61,6 +62,7 @@ function changeRate(change) {
 const GROUP_NAMES = {
   amounts: '主要数値',
   ...Object.fromEntries(CATEGORIES.map((c) => [c.id, c.name])),
+  [CASH_FLOW_GROUP.id]: CASH_FLOW_GROUP.name,
 };
 
 function periodLabels(data) {
@@ -69,7 +71,7 @@ function periodLabels(data) {
 
 // 比較表 CSV。列：区分, 指標, 単位, 各期の値, 2期目以降の 増減額・増減率(%)
 export function buildComparisonCsv(data, basis = 'end') {
-  const cmp = buildComparison(data, basis);
+  const cmp = buildComparisonWithCashFlow(data, basis);
   const u = unitOf(data?.settings, 'report');
   const labels = periodLabels(data);
   const header = ['区分', '指標', '単位', ...labels];
@@ -84,8 +86,9 @@ export function buildComparisonCsv(data, basis = 'end') {
   const note = basis === 'average'
     ? '平均残高ベース（ROA・ROE・回転日数・CCC）。平均残高=(前期末+当期末)÷2'
     : '期末残高ベース';
+  const cfNote = 'キャッシュフローは前期・当期のBSと当期のPLからの推計（最初の期は空欄）';
   rows.push([]);
-  rows.push(['注記', `金額単位：${u.name}。%の指標はパーセント値。${note}。%指標の増減額はポイント。`]);
+  rows.push(['注記', `金額単位：${u.name}。%の指標はパーセント値。${note}。%指標の増減額はポイント。${cfNote}。`]);
   return withBom(toCsv(rows));
 }
 

@@ -1,6 +1,7 @@
 // 比較タブ
 import { badgeFor } from '../badges.js';
-import { CATEGORIES, CHART_ROWS, buildComparison, formatChangeAmount, formatChangeRate, isNum } from '../calc.js';
+import { CATEGORIES, CHART_ROWS, formatChangeAmount, formatChangeRate, isNum } from '../calc.js';
+import { CASH_FLOW_GROUP, buildComparisonWithCashFlow, cashFlowBadge } from '../cashflow.js';
 import { buildLineChartSvg } from '../chart.js';
 import { hasHelp } from '../help.js';
 import { arrangeComparisonRows, rowLabel, unitOf } from '../settings.js';
@@ -8,11 +9,13 @@ import { renderBridgeTable } from './adjustments.js';
 import { $, badgeEl, criterionBar, el, evaluation, fa, fmt, fv, settings, state, unitName } from './core.js';
 import { helpButton } from './dialogs.js';
 import { valueClass } from './input.js';
+import { renderCashFlowCompare } from './cashflow.js';
 import { renderNetDebtTable, renderWorkingCapitalTable } from './netdebt.js';
 
 
 export function groupName(group) {
   if (group === 'amounts') return `主要数値（${unitName()}）`;
+  if (group === CASH_FLOW_GROUP.id) return CASH_FLOW_GROUP.name;
   return CATEGORIES.find((c) => c.id === group)?.name ?? '';
 }
 
@@ -23,7 +26,7 @@ export function renderCompare() {
     ? '平均残高ベース：ROA・ROE・回転日数・CCC の BS 項目を (前期末 + 当期末) ÷ 2 で計算します（★印）。前期がない期は「—」。その他の指標は期末残高です。'
     : '期末残高ベース：BS 項目は各期の期末残高を使います。';
 
-  const cmp = buildComparison(state.data, state.basis);
+  const cmp = buildComparisonWithCashFlow(state.data, state.basis);
   const table = $('compareTable');
   table.replaceChildren();
   $('compareCriterion').replaceChildren(criterionBar());
@@ -46,7 +49,7 @@ export function renderCompare() {
     if (state.basis === 'average' && row.averageable) head.append(el('span', { className: 'avg-mark', text: '★' }));
     const tr = el('tr', {}, [head]);
     row.cells.forEach((cell, ci) => {
-      const badge = badgeFor(row.id, cell.result, state.data.periods[ci], evaluation());
+      const badge = row.group === CASH_FLOW_GROUP.id ? cashFlowBadge(row.id, cell.result, evaluation()) : badgeFor(row.id, cell.result, state.data.periods[ci], evaluation());
       const td = el('td', {}, [
         el('span', {
           className: valueClass('cell-value', cell.result),
@@ -70,6 +73,7 @@ export function renderCompare() {
   renderWorkingCapitalTable();
   renderNetDebtTable();
   renderCharts(cmp);
+  renderCashFlowCompare();
 }
 
 // グラフの値は内部値（千円）のまま描き、目盛りの表示だけ表示単位に換算する

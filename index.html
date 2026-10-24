@@ -205,6 +205,12 @@
         <datalist id="debtLikeExamples"></datalist>
         <datalist id="cashLikeExamples"></datalist>
       </section>
+
+      <section id="sec-cf" class="panel cashflow" aria-label="キャッシュフロー（推計）">
+        <h2 class="panel-title">キャッシュフロー（推計）（<span id="cfPeriodName"></span>）</h2>
+        <p class="note">前の期と当期のBS、当期のPLから、間接法で推計します（入力は不要です）。</p>
+        <div id="cfBody"></div>
+      </section>
     </div>
 
     <!-- 比較タブ -->
@@ -263,6 +269,13 @@
         </div>
       </section>
 
+      <section id="sec-cfc" class="panel" aria-label="キャッシュフローの推移">
+        <h2 class="panel-title">キャッシュフローの推移（推計・<span class="unit-name" data-scope="compare">千円</span>）</h2>
+        <div id="cfChart" class="diagram-holder"></div>
+        <div class="cf-legend" aria-hidden="true"><span class="cf-key bar-op">営業CF</span><span class="cf-key bar-inv">投資CF</span><span class="cf-key bar-fin">財務CF</span><span class="cf-key bar-fcf">FCF</span></div>
+        <p id="cfChartNote" class="note"></p>
+      </section>
+
       <section id="sec-charts" aria-label="推移グラフ">
         <h2 class="section-title">主要指標の推移</h2>
         <div id="charts" class="charts"></div>
@@ -316,6 +329,14 @@
         <div id="dgEbitda" class="diagram-holder"></div>
         <details class="howto"><summary>この図の見方</summary>
           <p>EBITDA（営業利益＋減価償却費）は、会社が本業でどれだけ現金を稼ぐ力があるかの目安です。M&amp;Aでは、オーナーの役員報酬や一度きりの費用など「通常の年には発生しない影響」を取り除いた正常化EBITDAで実力を見ます。緑の棒は足し戻した調整、赤い棒は差し引いた調整です。調整は入力タブの「正常化EBITDA」で登録します。</p>
+        </details>
+      </section>
+      <section id="sec-dg-cf" class="panel diagram-card" aria-label="お金の流れ">
+        <h2 class="panel-title">お金はどう動いた？（お金の流れ・推計）</h2>
+        <p id="dgCfInsight" class="insight"></p>
+        <div id="dgCf" class="diagram-holder"></div>
+        <details class="howto"><summary>この図の見方</summary>
+          <p>前の期末（期首）の現預金から、本業で生んだお金（営業CF）、設備投資など（投資CF）、借入の増減や増資・配当（財務CF）を順に足し引きし、当期末の現預金になるまでを表しています。営業CFと投資CFの合計がフリー・キャッシュフローで、借入の返済や配当に回せるお金の目安です。CF計算書ではなく、BSの増減から推計した値です。</p>
         </details>
       </section>
       <section id="sec-dg-nd" class="panel diagram-card" aria-label="実質的な借入">

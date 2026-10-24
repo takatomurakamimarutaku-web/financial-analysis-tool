@@ -5,6 +5,7 @@ import {
 } from '../calc.js';
 import { CSV_KINDS, csvFileName } from '../csv.js';
 import { REPORT_DISCLAIMER } from '../help.js';
+import { CF_LIMITATION } from '../cashflow.js';
 import { buildLineChartSvg } from '../chart.js';
 import { bsBoxes, buildBsBoxSvg, buildWaterfallSvg, plSteps } from '../diagrams.js';
 import { REPORT_TEXT_MAX, categoryLabel, normalizeReportSettings, rowLabel, unitOf } from '../settings.js';
@@ -16,6 +17,7 @@ import { renderCompanyBar } from './companies.js';
 import {
   $, cancelPendingSave, days, el, evaluation, fa, fmt, formatDateTime, fv, saveNow, scheduleSave, setWorkspace, settings, showToast, state, unitName,
 } from './core.js';
+import { reportCashFlowRows } from './cashflow.js';
 import { radarData, radarSvg } from './diagram.js';
 import { periodName, renderForm, renderInputResults, renderInputWarnings } from './input.js';
 import { pctText, renderNetDebtSummary } from './netdebt.js';
@@ -270,6 +272,12 @@ export function renderReport() {
     ]),
   ]));
 
+  // キャッシュフロー（推計）
+  box.append(el('section', {}, [
+    el('h2', { text: 'キャッシュフロー（推計）' }),
+    reportTable(labels, reportCashFlowRows(data)),
+  ]));
+
   if (rs.charts) box.append(reportCharts(data, labels));
 
   // 警告・注記
@@ -284,6 +292,7 @@ export function renderReport() {
     '正常化EBITDA ＝ 報告EBITDA（営業利益＋減価償却費）＋ 調整額合計。調整の妥当性は各根拠メモをご確認ください。',
     '調整後ネットデット ＝ 有利子負債 ＋ デットライク項目 − 現預金 − キャッシュライク項目。',
     '参考：平均運転資本は、本来は月次残高で算定すべきものであり、本値は期末残高による簡易的な目安です。',
+    `${CF_LIMITATION}最初の期は前の期がないため推計しません。債務償還年数 ＝ 有利子負債 ÷ 簡易CF（当期純利益＋減価償却費）。`,
     ...(reportNote(evaluation()) ? [reportNote(evaluation())] : []),
     REPORT_DISCLAIMER,
   ];

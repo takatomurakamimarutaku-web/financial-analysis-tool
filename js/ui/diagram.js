@@ -5,6 +5,7 @@ import {
 } from '../diagrams.js';
 import { RADAR_MAX, buildRadarSvg, radarScores } from '../radar.js';
 import { formatSigned } from './adjustments.js';
+import { renderCashFlowDiagram } from './cashflow.js';
 import { $, currentPeriod, days, el, evaluation, fa, fv, settings, state, unitName } from './core.js';
 import { periodName, renderUnitLabels, selectPeriod } from './input.js';
 
@@ -44,6 +45,7 @@ export function renderDiagrams() {
   const u = unitName();
 
   renderRadar();
+  renderCashFlowDiagram();
 
   // 損益の滝グラフ
   const pl = p.pl;

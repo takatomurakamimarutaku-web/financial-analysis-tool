@@ -96,6 +96,55 @@ const EXTRA_HELP = {
   },
 };
 
+// キャッシュフロー（推計）の指標。前期のBSが必要なものがあるため、INDICATORS とは別に持つ
+const CF_HELP = {
+  operatingCf: {
+    name: '営業CF（推計）', unit: '千円',
+    formula: '当期純利益 + 減価償却費 − Δ売上債権 − Δ棚卸資産 + Δ仕入債務 − Δその他流動資産 + Δその他負債（Δ＝当期末−前期末）',
+    meaning: '本業で生んだお金。その他流動資産＝流動資産−現預金−売上債権−棚卸資産、その他負債＝流動負債＋固定負債−仕入債務−有利子負債。マイナスが続くと資金繰りに注意（「標準」の基準で注意のバッジ）。',
+  },
+  investingCf: {
+    name: '投資CF（推計）', unit: '千円',
+    formula: '−（Δ固定資産合計 + 減価償却費）',
+    meaning: '設備投資などに使ったお金（マイナスが支出）。固定資産の売却や保険積立金・貸付金の増減もここに入る簡易な推計。',
+  },
+  financingCf: {
+    name: '財務CF（推計）', unit: '千円',
+    formula: 'Δ有利子負債 +（Δ純資産 − 当期純利益）',
+    meaning: '借入の増減と、利益以外の純資産の動き（増資はプラス、配当はマイナス）。営業・投資・財務の合計は現預金の増減と一致する。',
+  },
+  fcf: {
+    name: 'フリー・キャッシュフロー（FCF）', unit: '千円',
+    formula: '営業CF + 投資CF',
+    meaning: '借入の返済や配当に回せるお金の目安。',
+  },
+  simpleCf: {
+    name: '簡易CF', unit: '千円',
+    formula: '当期純利益 + 減価償却費',
+    meaning: '金融機関がよく使う返済原資の目安。前期がなくても計算できる。',
+  },
+  operatingCfMargin: {
+    name: '営業CFマージン', unit: '%',
+    formula: '営業CF ÷ 売上高',
+    meaning: '売上高のうち、お金として残った割合。営業利益率と比べると、利益が現金になっているかが分かる。',
+  },
+  capex: {
+    name: '設備投資額（推計）', unit: '千円',
+    formula: 'Δ固定資産合計 + 減価償却費',
+    meaning: '固定資産の増加と減価償却費から推計した設備投資の額。売却や除却があると実際より小さく出る。',
+  },
+  debtRedemptionYears: {
+    name: '債務償還年数', unit: '年',
+    formula: '有利子負債 ÷ 簡易CF（簡易CFが0以下なら参考外）',
+    meaning: '借入を今の稼ぎ（簡易CF）で何年で返せるか。金融機関によって式が異なる（例：有利子負債から現預金や正常運転資金を差し引く）。「標準」の基準では10年以下で良好、20年超で注意（金融機関の一般的な目安。公的な基準ではない）。',
+  },
+  normalizedEbitdaLessCapex: {
+    name: '正常化EBITDA − 設備投資額（参考）', unit: '千円',
+    formula: '正常化EBITDA − 設備投資額（推計）',
+    meaning: 'M&Aの財務デューデリジェンスでよく見る、買収後に返済などに回せるお金の目安。運転資本の増減と税金は含まない。',
+  },
+};
+
 // 計算できない場合の表示の説明（一覧の末尾に出す）
 export const NA_RULES = [
   '「—」：分母が0、または計算に必要な項目が未入力',
@@ -107,6 +156,8 @@ export const NA_RULES = [
 export function indicatorHelp(id, { days = DEFAULT_DAYS, evaluation } = {}) {
   const ind = INDICATORS.find((i) => i.id === id);
   const extra = EXTRA_HELP[id];
+  const cf = CF_HELP[id];
+  if (cf) return { id, name: cf.name, unit: cf.unit, category: 'キャッシュフロー（推計）', formula: cf.formula, meaning: cf.meaning, guide: null };
   if (!ind && !extra) return null;
   const guide = evaluation ? guideFor(id, evaluation) : null;
   if (ind) {
@@ -120,7 +171,7 @@ export function indicatorHelp(id, { days = DEFAULT_DAYS, evaluation } = {}) {
 }
 
 export function hasHelp(id) {
-  return INDICATORS.some((i) => i.id === id) || id in EXTRA_HELP;
+  return INDICATORS.some((i) => i.id === id) || id in EXTRA_HELP || id in CF_HELP;
 }
 
 // 指標の解説一覧（設定の「指標の解説」ページ）：区分ごとの配列
@@ -130,5 +181,6 @@ export function helpCatalog(options = {}) {
     items: INDICATORS.filter((i) => i.category === c.id).map((i) => indicatorHelp(i.id, options)),
   }));
   groups.find((g) => g.name === 'M&A')?.items.push(...Object.keys(EXTRA_HELP).map((id) => indicatorHelp(id, options)));
+  groups.push({ name: 'キャッシュフロー（推計）', items: Object.keys(CF_HELP).map((id) => indicatorHelp(id, options)) });
   return groups;
 }
