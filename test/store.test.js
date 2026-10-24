@@ -22,10 +22,10 @@ function throwingStorage() {
 }
 
 describe('初期データ', () => {
-  test('createEmptyData は最新 version（Phase 4 以降は 3）・1期・全項目 null', () => {
+  test('createEmptyData は最新 version（Phase 6 以降は 4）・1期・全項目 null', () => {
     const d = createEmptyData();
-    assert.equal(d.version, 3);
-    assert.equal(CURRENT_VERSION, 3);
+    assert.equal(d.version, 4);
+    assert.equal(CURRENT_VERSION, 4);
     assert.equal(d.companyName, '');
     assert.equal(d.periods.length, 1);
     const p = d.periods[0];

@@ -1,9 +1,10 @@
 // データの保存・読込（localStorage のみ。外部送信は行わない）
 // storage は引数で差し替え可能（テストではメモリ上のモックを渡す）
 import { PL_FIELDS, BS_FIELDS, MAX_PERIODS, ADJUSTMENT_CATEGORIES, isNum } from './calc.js';
+import { createDefaultSettings, normalizeSettings, applyAccountTotals } from './settings.js';
 
 export const STORAGE_KEY = 'finAnalysisTool.data';
-export const CURRENT_VERSION = 3;
+export const CURRENT_VERSION = 4;
 
 function defaultStorage() {
   try {
@@ -28,11 +29,13 @@ export function createEmptyPeriod(label = '') {
     adjustments: [],
     debtLikeItems: [],
     cashLikeItems: [],
+    details: {}, // 設定で追加した内訳科目の値 { [科目キー]: number|null }
   };
 }
 
-export function createEmptyData() {
-  return { version: CURRENT_VERSION, companyName: '', periods: [createEmptyPeriod('')] };
+// settings を渡すと設定を引き継ぐ（「クリア」で設定は消さない）
+export function createEmptyData(settings = createDefaultSettings()) {
+  return { version: CURRENT_VERSION, companyName: '', periods: [createEmptyPeriod('')], settings: normalizeSettings(settings) };
 }
 
 export function getSampleData() {
@@ -72,8 +75,10 @@ export function getSampleData() {
         cashLikeItems: [
           { id: 'sample-2025-c1', name: '定期預金', amount: 2000, memo: '固定資産（投資その他の資産）に計上。中途解約可能' },
         ],
+        details: {},
       },
     ],
+    settings: createDefaultSettings(),
   };
 }
 
@@ -81,7 +86,7 @@ export function getSampleData() {
 export function getSampleMultiData() {
   const latest = getSampleData();
   const period = (label, pl, bs, adjustments = [], debtLikeItems = [], cashLikeItems = []) => ({
-    label, pl, bs, adjustments, debtLikeItems, cashLikeItems,
+    label, pl, bs, adjustments, debtLikeItems, cashLikeItems, details: {},
   });
   const retirement = (id, amount) => ({
     id, name: '退職給付引当金', amount, memo: '従業員の退職金は将来の支払義務であり、実質的な債務とみなす',
@@ -176,7 +181,14 @@ function normalizeLineItems(list) {
   return Array.isArray(list) ? list.map(normalizeLineItem).filter(Boolean) : [];
 }
 
-function normalizePeriod(p) {
+function normalizeDetails(src, customKeys) {
+  const o = {};
+  if (!isPlainObject(src)) return o;
+  for (const k of customKeys) if (isNum(src[k])) o[k] = src[k];
+  return o;
+}
+
+function normalizePeriod(p, customKeys = []) {
   if (!isPlainObject(p)) return null;
   return {
     label: typeof p.label === 'string' ? p.label : '',
@@ -185,19 +197,24 @@ function normalizePeriod(p) {
     adjustments: Array.isArray(p.adjustments) ? p.adjustments.map(normalizeAdjustment).filter(Boolean) : [],
     debtLikeItems: normalizeLineItems(p.debtLikeItems),
     cashLikeItems: normalizeLineItems(p.cashLikeItems),
+    details: normalizeDetails(p.details, customKeys),
   };
 }
 
 // 欠けた項目を null で補い、数値以外を null にする。形が壊れていれば null。
+// 内訳科目がある親科目は、内訳の合計で更新する。
 export function normalizeData(raw) {
   if (!isPlainObject(raw) || !Array.isArray(raw.periods)) return null;
-  const periods = raw.periods.map(normalizePeriod);
+  const settings = normalizeSettings(raw.settings);
+  const customKeys = settings.accounts.custom.map((c) => c.key);
+  const periods = raw.periods.map((p) => normalizePeriod(p, customKeys));
   if (periods.some((p) => p === null)) return null;
-  return {
+  return applyAccountTotals({
     version: CURRENT_VERSION,
     companyName: typeof raw.companyName === 'string' ? raw.companyName : '',
     periods: periods.length ? periods : [createEmptyPeriod('')],
-  };
+    settings,
+  });
 }
 
 // version を確認して最新形式に移行する。未知の version は null。
@@ -206,8 +223,22 @@ export function migrate(raw) {
   let data = raw;
   if (data.version === 1) data = migrateV1toV2(data);
   if (data.version === 2) data = migrateV2toV3(data);
+  if (data.version === 3) data = migrateV3toV4(data);
   if (data.version === CURRENT_VERSION) return data;
   return null;
+}
+
+// version 3 → 4：設定（settings）を既定値で追加し、各期に内訳科目の値（details）を追加する。
+// 既存の入力値は変更しない（表示単位の既定は千円で、従来の表示と同じ）。
+export function migrateV3toV4(v3) {
+  return {
+    ...v3,
+    version: 4,
+    settings: createDefaultSettings(),
+    periods: Array.isArray(v3.periods)
+      ? v3.periods.map((p) => (isPlainObject(p) ? { ...p, details: {} } : p))
+      : v3.periods,
+  };
 }
 
 // version 2 → 3：キャッシュライク項目（cashLikeItems）を追加し、
@@ -321,7 +352,7 @@ export const BACKUP_FORMAT_VERSION = 1;
 export const LAST_BACKUP_KEY = 'finAnalysisTool.lastBackupAt';
 export const BACKUP_REMINDER_DAYS = 30;
 
-const SUPPORTED_DATA_VERSIONS = [1, 2, 3];
+const SUPPORTED_DATA_VERSIONS = [1, 2, 3, 4];
 
 export function createBackup(data, now = new Date()) {
   return {
@@ -361,6 +392,7 @@ export function validateData(raw) {
     return [`対応していないデータのバージョンです（version: ${JSON.stringify(raw.version)}）`];
   }
   if (raw.companyName !== undefined && typeof raw.companyName !== 'string') errors.push('companyName が文字列ではありません');
+  if (raw.settings !== undefined && !isPlainObject(raw.settings)) errors.push('settings が不正です');
   if (!Array.isArray(raw.periods)) return [...errors, 'periods がありません'];
   if (raw.periods.length < 1 || raw.periods.length > MAX_PERIODS) {
     errors.push(`期の数が不正です（1〜${MAX_PERIODS}期）`);
@@ -376,6 +408,14 @@ export function validateData(raw) {
     checkFields(p.bs, BS_FIELDS, `${where}.bs`, errors);
     for (const k of ['adjustments', 'debtLikeItems', 'cashLikeItems']) {
       if (p[k] !== undefined && !Array.isArray(p[k])) errors.push(`${where}.${k} が配列ではありません`);
+    }
+    if (p.details !== undefined) {
+      if (!isPlainObject(p.details)) errors.push(`${where}.details が不正です`);
+      else {
+        for (const [k, v] of Object.entries(p.details)) {
+          if (v !== null && !isNum(v)) errors.push(`${where}.details.${k} が数値ではありません`);
+        }
+      }
     }
     if (Array.isArray(p.adjustments)) {
       p.adjustments.forEach((a, j) => {
@@ -452,11 +492,11 @@ export function setLastBackupAt(date = new Date(), storage = defaultStorage()) {
   }
 }
 
-// 入力データがあり、最終バックアップから30日以上（または未実施）なら true
-export function needsBackupReminder(lastBackupAt, hasData, now = new Date()) {
-  if (!hasData) return false;
+// 入力データがあり、最終バックアップから days 日以上（または未実施）なら true。days = 0 は案内しない。
+export function needsBackupReminder(lastBackupAt, hasData, now = new Date(), days = BACKUP_REMINDER_DAYS) {
+  if (!hasData || days === 0) return false;
   if (!(lastBackupAt instanceof Date) || Number.isNaN(lastBackupAt.getTime())) return true;
-  return now.getTime() - lastBackupAt.getTime() >= BACKUP_REMINDER_DAYS * 24 * 60 * 60 * 1000;
+  return now.getTime() - lastBackupAt.getTime() >= days * 24 * 60 * 60 * 1000;
 }
 
 // 何か入力されているか
@@ -466,7 +506,8 @@ export function hasAnyData(data) {
     || data.periods.length > 1
     || data.periods.some((p) => p.label
       || Object.values(p.pl).some(isNum)
-      || Object.values(p.bs).some(isNum));
+      || Object.values(p.bs).some(isNum)
+      || Object.values(p.details ?? {}).some(isNum));
 }
 
 // ---- 調整項目の操作（元のデータは変更せず、新しいデータを返す） ----

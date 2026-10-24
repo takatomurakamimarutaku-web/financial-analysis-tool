@@ -124,6 +124,14 @@ export function runChecks(root) {
       ...listFiles(root, 'icons'),
     ];
     for (const f of required) check(cached.has(f), `アプリ本体のファイルがキャッシュ対象に含まれる（${f}）`);
+    // 設定画面に表示するアプリのバージョンが sw.js のキャッシュバージョンと一致すること
+    let appVersion = null;
+    try {
+      appVersion = read(root, 'js/pwa.js').match(/export\s+const\s+APP_VERSION\s*=\s*'([^']*)'/)?.[1] ?? null;
+    } catch {
+      // 下の check で NG になる
+    }
+    check(appVersion === sw.version, `js/pwa.js の APP_VERSION が sw.js の CACHE_VERSION と一致（${appVersion} / ${sw.version}）`);
   }
 
   // ---- index.html ----

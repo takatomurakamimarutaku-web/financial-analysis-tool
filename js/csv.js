@@ -1,8 +1,10 @@
 // CSV出力（DOMに依存しない純粋関数）
 // Excel で文字化けしないよう、BOM 付き UTF-8・改行は CRLF で出力する。
+// 金額は設定の表示単位（data.settings.unit。既定は千円）で出力する。
 import {
   isNum, buildComparison, buildEbitdaBridge, buildNetDebtBreakdown, categoryName, CATEGORIES,
 } from './calc.js';
+import { unitOf, arrangeComparisonRows, rowLabel } from './settings.js';
 
 export const BOM = '﻿';
 
@@ -30,17 +32,23 @@ export function cleanNumber(v) {
   return isNum(v) ? Number(v.toPrecision(12)) : null;
 }
 
-// % の指標はパーセント値（× 100）で出力する
-function csvValue(result, unit) {
+// 単位に応じた出力値：% はパーセント値（× 100）、金額（千円）は表示単位に換算
+function scaled(v, unit, scale) {
+  if (unit === '%') return cleanNumber(v * 100);
+  if (unit === '千円') return cleanNumber(v * scale);
+  return cleanNumber(v);
+}
+
+function csvValue(result, unit, scale = 1) {
   if (!result) return '';
   if (result.status === 'notApplicable') return '参考外';
   if (result.status !== 'ok' || !isNum(result.value)) return '';
-  return cleanNumber(unit === '%' ? result.value * 100 : result.value);
+  return scaled(result.value, unit, scale);
 }
 
-function changeAmount(change, unit) {
+function changeAmount(change, unit, scale) {
   if (!change || !isNum(change.amount)) return '';
-  return cleanNumber(unit === '%' ? change.amount * 100 : change.amount);
+  return scaled(change.amount, unit, scale);
 }
 
 function changeRate(change) {
@@ -62,37 +70,40 @@ function periodLabels(data) {
 // 比較表 CSV。列：区分, 指標, 単位, 各期の値, 2期目以降の 増減額・増減率(%)
 export function buildComparisonCsv(data, basis = 'end') {
   const cmp = buildComparison(data, basis);
+  const u = unitOf(data?.settings);
   const labels = periodLabels(data);
   const header = ['区分', '指標', '単位', ...labels];
   labels.slice(1).forEach((l) => header.push(`${l} 増減額`, `${l} 増減率(%)`));
   const rows = [header];
-  for (const r of cmp.rows) {
-    const line = [GROUP_NAMES[r.group] ?? '', r.name, r.unit, ...r.cells.map((c) => csvValue(c.result, r.unit))];
-    r.cells.slice(1).forEach((c) => line.push(changeAmount(c.change, r.unit), changeRate(c.change)));
+  for (const r of arrangeComparisonRows(data?.settings, cmp.rows)) {
+    const unit = r.unit === '千円' ? u.name : r.unit;
+    const line = [GROUP_NAMES[r.group] ?? '', rowLabel(data?.settings, r), unit, ...r.cells.map((c) => csvValue(c.result, r.unit, u.scale))];
+    r.cells.slice(1).forEach((c) => line.push(changeAmount(c.change, r.unit, u.scale), changeRate(c.change)));
     rows.push(line);
   }
   const note = basis === 'average'
     ? '平均残高ベース（ROA・ROE・回転日数・CCC）。平均残高=(前期末+当期末)÷2'
     : '期末残高ベース';
   rows.push([]);
-  rows.push(['注記', `金額単位：千円。%の指標はパーセント値。${note}。%指標の増減額はポイント。`]);
+  rows.push(['注記', `金額単位：${u.name}。%の指標はパーセント値。${note}。%指標の増減額はポイント。`]);
   return withBom(toCsv(rows));
 }
 
 // EBITDAブリッジ CSV。上段：ブリッジ表、下段：調整項目の明細（根拠メモを含む）
 export function buildBridgeCsv(data) {
   const b = buildEbitdaBridge(data);
+  const u = unitOf(data?.settings);
   const labels = periodLabels(data);
   const rows = [['項目', '単位', ...labels]];
   for (const r of b.rows) {
-    rows.push([r.name, r.unit, ...r.values.map((v) => (isNum(v) ? cleanNumber(r.unit === '%' ? v * 100 : v) : ''))]);
+    rows.push([r.name, r.unit === '千円' ? u.name : r.unit, ...r.values.map((v) => (isNum(v) ? scaled(v, r.unit, u.scale) : ''))]);
   }
   rows.push([]);
   rows.push(['調整項目の明細']);
-  rows.push(['期', '区分', '内容', '金額（千円）', '根拠メモ']);
+  rows.push(['期', '区分', '内容', `金額（${u.name}）`, '根拠メモ']);
   (data?.periods ?? []).forEach((p, i) => {
     for (const a of p.adjustments ?? []) {
-      rows.push([labels[i], categoryName(a.category), a.description ?? '', isNum(a.amount) ? a.amount : '', a.memo ?? '']);
+      rows.push([labels[i], categoryName(a.category, data?.settings?.adjustmentCategoryNames), a.description ?? '', isNum(a.amount) ? scaled(a.amount, '千円', u.scale) : '', a.memo ?? '']);
     }
   });
   rows.push([]);
@@ -103,19 +114,21 @@ export function buildBridgeCsv(data) {
 // ネットデット内訳 CSV。上段：内訳表、下段：デットライク・キャッシュライク項目の明細
 export function buildNetDebtCsv(data) {
   const b = buildNetDebtBreakdown(data);
+  const u = unitOf(data?.settings);
+  const amt = (v) => (isNum(v) ? scaled(v, '千円', u.scale) : '');
   const labels = periodLabels(data);
   const rows = [['項目', ...labels]];
-  for (const r of b.rows) rows.push([r.name, ...r.values.map((v) => (isNum(v) ? cleanNumber(v) : ''))]);
+  for (const r of b.rows) rows.push([r.name, ...r.values.map(amt)]);
   rows.push(['調整後ネットデット ÷ 正常化EBITDA（倍）', ...b.multiples.map((m) => csvValue(m, '倍'))]);
   rows.push([]);
   rows.push(['項目の明細']);
-  rows.push(['期', '種類', '名称', '金額（千円）', '根拠メモ']);
+  rows.push(['期', '種類', '名称', `金額（${u.name}）`, '根拠メモ']);
   (data?.periods ?? []).forEach((p, i) => {
-    for (const it of p.debtLikeItems ?? []) rows.push([labels[i], 'デットライク（加算）', it.name ?? '', isNum(it.amount) ? it.amount : '', it.memo ?? '']);
-    for (const it of p.cashLikeItems ?? []) rows.push([labels[i], 'キャッシュライク（減算）', it.name ?? '', isNum(it.amount) ? it.amount : '', it.memo ?? '']);
+    for (const it of p.debtLikeItems ?? []) rows.push([labels[i], 'デットライク（加算）', it.name ?? '', amt(it.amount), it.memo ?? '']);
+    for (const it of p.cashLikeItems ?? []) rows.push([labels[i], 'キャッシュライク（減算）', it.name ?? '', amt(it.amount), it.memo ?? '']);
   });
   rows.push([]);
-  rows.push(['注記', '金額単位：千円。調整後ネットデット = 有利子負債 + デットライク項目 − 現預金 − キャッシュライク項目。現預金・キャッシュライク項目は減算のため負の値で表示。']);
+  rows.push(['注記', `金額単位：${u.name}。調整後ネットデット = 有利子負債 + デットライク項目 − 現預金 − キャッシュライク項目。現預金・キャッシュライク項目は減算のため負の値で表示。`]);
   return withBom(toCsv(rows));
 }
 

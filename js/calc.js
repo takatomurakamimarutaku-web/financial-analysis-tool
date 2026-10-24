@@ -84,16 +84,26 @@ export function isInsolvent(bs) {
   return isNum(bs?.netAssets) && bs.netAssets < 0;
 }
 
-const DAYS = 365;
+// 回転日数の年日数（設定で 360 も選べる）
+export const DEFAULT_DAYS = 365;
 
-function receivableDays({ pl, bs }) {
-  return times(safeDiv(bs.receivables, pl.sales), DAYS);
+function daysOf(ctx) {
+  return ctx.days === 360 ? 360 : DEFAULT_DAYS;
 }
-function inventoryDays({ pl, bs }) {
-  return times(safeDiv(bs.inventory, pl.costOfSales), DAYS);
+
+// data.settings から年日数を取り出す
+export function daysInYearOf(data) {
+  return data?.settings?.analysis?.daysInYear === 360 ? 360 : DEFAULT_DAYS;
 }
-function payableDays({ pl, bs }) {
-  return times(safeDiv(bs.payables, pl.costOfSales), DAYS);
+
+function receivableDays(ctx) {
+  return times(safeDiv(ctx.bs.receivables, ctx.pl.sales), daysOf(ctx));
+}
+function inventoryDays(ctx) {
+  return times(safeDiv(ctx.bs.inventory, ctx.pl.costOfSales), daysOf(ctx));
+}
+function payableDays(ctx) {
+  return times(safeDiv(ctx.bs.payables, ctx.pl.costOfSales), daysOf(ctx));
 }
 function ebitda({ pl }) {
   return sumOf(pl.operatingIncome, pl.depreciation);
@@ -251,8 +261,13 @@ export const INDICATORS = [
   },
 ];
 
-function toCtx(period) {
-  return { pl: period?.pl ?? {}, bs: period?.bs ?? {} };
+function toCtx(period, days = DEFAULT_DAYS) {
+  return { pl: period?.pl ?? {}, bs: period?.bs ?? {}, days };
+}
+
+// 計算式の表示用（年日数の設定を反映する）
+export function formulaText(ind, days = DEFAULT_DAYS) {
+  return ind.formula.replace('× 365', `× ${days}`);
 }
 
 export const BASES = [
@@ -273,10 +288,11 @@ export function averageBs(bs = {}, prevBs) {
 // 全指標を計算する。戻り値：{ [id]: { value: number|null, status: 'ok'|'na'|'notApplicable' } }
 // options.basis = 'end'（既定。期末残高）| 'average'（平均残高。averageable な指標のみ）
 // options.prevPeriod = 平均残高の計算に使う前期
+// options.days = 回転日数の年日数（365 または 360。既定 365）
 export function calcIndicators(period, options = {}) {
-  const endCtx = toCtx(period);
+  const endCtx = toCtx(period, options.days === 360 ? 360 : DEFAULT_DAYS);
   const avgCtx = options.basis === 'average'
-    ? { pl: endCtx.pl, bs: averageBs(endCtx.bs, options.prevPeriod?.bs) }
+    ? { pl: endCtx.pl, bs: averageBs(endCtx.bs, options.prevPeriod?.bs), days: endCtx.days }
     : null;
   const results = {};
   for (const ind of INDICATORS) {
@@ -299,20 +315,22 @@ export function checkBalance(bs = {}) {
   };
 }
 
-export function getWarnings(period) {
+// opts は formatAmount と同じ表示オプション（金額の単位）
+export function getWarnings(period, opts) {
   const { bs } = toCtx(period);
+  const unit = opts?.amountUnit ?? '千円';
   const warnings = [];
   const { assetsDiff, liabEquityDiff } = checkBalance(bs);
   if (isNum(assetsDiff) && Math.abs(assetsDiff) >= BALANCE_TOLERANCE) {
     warnings.push({
       type: 'assetsMismatch',
-      message: `総資産と「流動資産＋固定資産」が一致しません（差額 ${formatAmount(assetsDiff)}千円）`,
+      message: `総資産と「流動資産＋固定資産」が一致しません（差額 ${formatAmount(assetsDiff, opts)}${unit}）`,
     });
   }
   if (isNum(liabEquityDiff) && Math.abs(liabEquityDiff) >= BALANCE_TOLERANCE) {
     warnings.push({
       type: 'liabEquityMismatch',
-      message: `総資産と「流動負債＋固定負債＋純資産」が一致しません（差額 ${formatAmount(liabEquityDiff)}千円）`,
+      message: `総資産と「流動負債＋固定負債＋純資産」が一致しません（差額 ${formatAmount(liabEquityDiff, opts)}${unit}）`,
     });
   }
   if (isInsolvent(bs)) {
@@ -327,33 +345,43 @@ export function getWarnings(period) {
 
 const DIGITS = { '%': 1, '日': 1, '倍': 2, '回': 2, '千円': 0 };
 
-function formatNumber(v, digits) {
+// 表示オプション（すべて省略可。省略時は千円・従来の桁数）
+// opts = { amountScale: 千円からの倍率, amountUnit: '円'|'千円'|'百万円', amountDigits, digits: { '%', '日', '倍', '回' } }
+function digitsFor(unit, opts) {
+  const d = opts?.digits?.[unit];
+  return Number.isInteger(d) ? d : (DIGITS[unit] ?? 2);
+}
+
+export function formatNumber(v, digits) {
   // -0.0 のような表示を避ける
   const rounded = Number(v.toFixed(digits));
   const n = Object.is(rounded, -0) ? 0 : rounded;
   return n.toLocaleString('ja-JP', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
-export function formatAmount(v) {
+// 金額（内部は千円）を表示単位に換算して整形する
+export function formatAmount(v, opts) {
   if (!isNum(v)) return '—';
-  return formatNumber(v, 0);
+  return formatNumber(v * (opts?.amountScale ?? 1), opts?.amountDigits ?? 0);
 }
 
 // 表示用の整形。result は calcIndicators の各要素
-export function formatValue(result, unit) {
+export function formatValue(result, unit, opts) {
   if (!result || result.status === 'notApplicable') return result ? '参考外' : '—';
   if (result.status !== 'ok' || !isNum(result.value)) return '—';
-  if (unit === '%') return `${formatNumber(result.value * 100, DIGITS['%'])}%`;
-  if (unit === '千円') return `${formatNumber(result.value, 0)}千円`;
-  return `${formatNumber(result.value, DIGITS[unit] ?? 2)}${unit}`;
+  if (unit === '%') return `${formatNumber(result.value * 100, digitsFor('%', opts))}%`;
+  if (unit === '千円') return `${formatAmount(result.value, opts)}${opts?.amountUnit ?? '千円'}`;
+  return `${formatNumber(result.value, digitsFor(unit, opts))}${unit}`;
 }
 
 // 「結果をテキストでコピー」用の本文（periodIndex の期。既定は先頭の期）
-export function buildResultText(data, results, warnings = [], periodIndex = 0) {
+// opts は formatValue と同じ表示オプション。opts.indicators を渡すとその順序・表示設定で出力する。
+export function buildResultText(data, results, warnings = [], periodIndex = 0, opts) {
   const period = data?.periods?.[periodIndex];
+  const indicators = opts?.indicators ?? INDICATORS;
   const lines = [];
   lines.push(`【財務分析結果】${data?.companyName || '（会社名未入力）'} ${period?.label || ''}`.trim());
-  lines.push('（金額単位：千円、期末残高ベース）');
+  lines.push(`（金額単位：${opts?.amountUnit ?? '千円'}、期末残高ベース）`);
   if (warnings.length) {
     lines.push('');
     lines.push('■ 警告');
@@ -362,20 +390,26 @@ export function buildResultText(data, results, warnings = [], periodIndex = 0) {
   for (const cat of CATEGORIES) {
     lines.push('');
     lines.push(`■ ${cat.name}`);
-    for (const ind of INDICATORS.filter((i) => i.category === cat.id)) {
-      lines.push(`${ind.name}：${formatValue(results[ind.id], ind.unit)}`);
+    const list = indicators.filter((i) => i.category === cat.id);
+    if (!list.length) {
+      lines.pop();
+      lines.pop();
+      continue;
+    }
+    for (const ind of list) {
+      lines.push(`${ind.name}：${formatValue(results[ind.id], ind.unit, opts)}`);
     }
   }
   const items = Array.isArray(period?.adjustments) ? period.adjustments : [];
   if (items.length) {
-    const n = calcNormalizedEbitda(period);
-    const signedAmount = (v) => (v > 0 ? `+${formatAmount(v)}` : formatAmount(v));
+    const n = calcNormalizedEbitda(period, data?.settings?.adjustmentCategoryNames);
+    const signedAmount = (v) => (v > 0 ? `+${formatAmount(v, opts)}` : formatAmount(v, opts));
     lines.push('');
     lines.push('■ 正常化EBITDA');
-    lines.push(`報告EBITDA：${formatAmount(n.reported)}`);
+    lines.push(`報告EBITDA：${formatAmount(n.reported, opts)}`);
     for (const c of n.byCategory.filter((x) => x.count > 0)) lines.push(`　${c.name}：${signedAmount(c.total)}`);
-    lines.push(`正常化EBITDA：${formatAmount(n.normalized)}`);
-    lines.push(`正常化EBITDAマージン：${formatValue({ value: n.margin, status: isNum(n.margin) ? 'ok' : 'na' }, '%')}`);
+    lines.push(`正常化EBITDA：${formatAmount(n.normalized, opts)}`);
+    lines.push(`正常化EBITDAマージン：${formatValue({ value: n.margin, status: isNum(n.margin) ? 'ok' : 'na' }, '%', opts)}`);
     for (const w of getAdjustmentWarnings(period)) lines.push(`※${w.message}`);
   }
   return lines.join('\n');
@@ -414,18 +448,18 @@ function signed(text, v) {
 }
 
 // 増減額の表示。% の指標はポイント（pt）で表示する。
-export function formatChangeAmount(change, unit) {
+export function formatChangeAmount(change, unit, opts) {
   if (!change || !isNum(change.amount)) return '—';
   const v = change.amount;
-  if (unit === '%') return `${signed(formatNumber(v * 100, 1), v)}pt`;
-  if (unit === '千円') return `${signed(formatNumber(v, 0), v)}千円`;
-  return `${signed(formatNumber(v, DIGITS[unit] ?? 2), v)}${unit}`;
+  if (unit === '%') return `${signed(formatNumber(v * 100, digitsFor('%', opts)), v)}pt`;
+  if (unit === '千円') return `${signed(formatAmount(v, opts), v)}${opts?.amountUnit ?? '千円'}`;
+  return `${signed(formatNumber(v, digitsFor(unit, opts)), v)}${unit}`;
 }
 
-export function formatChangeRate(change) {
+export function formatChangeRate(change, opts) {
   if (!change || change.rateStatus === 'na') return '—';
   if (change.rateStatus === 'notApplicable') return '参考外';
-  return `${signed(formatNumber(change.rate * 100, 1), change.rate)}%`;
+  return `${signed(formatNumber(change.rate * 100, digitsFor('%', opts)), change.rate)}%`;
 }
 
 function amountResult(v) {
@@ -441,9 +475,12 @@ export const NORMALIZED_ROWS = [
 // 比較表のデータを作る。
 // 戻り値：{ labels: [期名], rows: [{ id, name, unit, group, averageable, cells: [{ result, change }] }] }
 // change は先頭の期では null。
+// 年日数は data.settings（なければ 365）、調整区分の名称も data.settings に従う。
 export function buildComparison(data, basis = 'end') {
   const periods = data?.periods ?? [];
-  const perPeriod = periods.map((p, i) => calcIndicators(p, { basis, prevPeriod: periods[i - 1] }));
+  const days = daysInYearOf(data);
+  const names = data?.settings?.adjustmentCategoryNames;
+  const perPeriod = periods.map((p, i) => calcIndicators(p, { basis, prevPeriod: periods[i - 1], days }));
   const makeCells = (getResult) => {
     const results = periods.map((p, i) => getResult(p, i));
     return results.map((result, i) => ({
@@ -471,13 +508,13 @@ export function buildComparison(data, basis = 'end') {
   for (const r of NORMALIZED_ROWS) {
     rows.push({
       id: r.id, name: r.name, unit: r.unit, group: 'ma', averageable: false,
-      cells: makeCells((p) => amountResult(r.get(calcNormalizedEbitda(p)))),
+      cells: makeCells((p) => amountResult(r.get(calcNormalizedEbitda(p, names)))),
     });
   }
   for (const r of NET_DEBT_ROWS) {
     rows.push({
       id: r.id, name: r.name, unit: r.unit, group: 'ma', averageable: false,
-      cells: makeCells((p) => r.get(p)),
+      cells: makeCells((p) => r.get(p, names)),
     });
   }
   return { labels: periods.map((p) => p.label), rows };
@@ -496,18 +533,20 @@ export const ADJUSTMENT_CATEGORIES = [
 
 const CATEGORY_IDS = new Set(ADJUSTMENT_CATEGORIES.map((c) => c.id));
 
-export function categoryName(id) {
-  return ADJUSTMENT_CATEGORIES.find((c) => c.id === id)?.name ?? 'その他';
+// names = 設定で変更した区分名 { [id]: 名称 }（省略可）
+export function categoryName(id, names) {
+  const c = ADJUSTMENT_CATEGORIES.find((x) => x.id === id) ?? ADJUSTMENT_CATEGORIES.find((x) => x.id === 'other');
+  return (typeof names?.[c.id] === 'string' && names[c.id].trim()) || c.name;
 }
 
 // 正常化EBITDA = 報告EBITDA + 調整額合計（プラス=加算、マイナス=減算）
 // 金額が未入力の調整項目は合計に含めない（警告の対象）。
 // 戻り値：{ reported, adjustmentTotal, normalized, margin, byCategory: [{ id, name, total, count }] }
-export function calcNormalizedEbitda(period) {
+export function calcNormalizedEbitda(period, names) {
   const ctx = toCtx(period);
   const reported = ebitda(ctx);
   const items = Array.isArray(period?.adjustments) ? period.adjustments : [];
-  const byCategory = ADJUSTMENT_CATEGORIES.map((c) => ({ id: c.id, name: c.name, total: 0, count: 0 }));
+  const byCategory = ADJUSTMENT_CATEGORIES.map((c) => ({ id: c.id, name: categoryName(c.id, names), total: 0, count: 0 }));
   let adjustmentTotal = 0;
   for (const item of items) {
     const cat = byCategory.find((c) => c.id === (CATEGORY_IDS.has(item?.category) ? item.category : 'other'));
@@ -547,12 +586,13 @@ export function getAdjustmentWarnings(period) {
 // 区分の行は、いずれかの期に調整項目がある区分だけを表示する。
 export function buildEbitdaBridge(data) {
   const periods = data?.periods ?? [];
-  const calcs = periods.map(calcNormalizedEbitda);
+  const names = data?.settings?.adjustmentCategoryNames;
+  const calcs = periods.map((p) => calcNormalizedEbitda(p, names));
   const used = ADJUSTMENT_CATEGORIES.filter((c) => calcs.some((r) => r.byCategory.find((x) => x.id === c.id).count > 0));
   const rows = [
     { id: 'reported', name: '報告EBITDA', unit: '千円', kind: 'base', values: calcs.map((r) => r.reported) },
     ...used.map((c) => ({
-      id: `cat:${c.id}`, name: c.name, unit: '千円', kind: 'adjustment',
+      id: `cat:${c.id}`, name: categoryName(c.id, names), unit: '千円', kind: 'adjustment',
       values: calcs.map((r) => r.byCategory.find((x) => x.id === c.id).total),
     })),
     { id: 'adjustmentTotal', name: '調整額合計', unit: '千円', kind: 'subtotal', values: calcs.map((r) => r.adjustmentTotal) },
@@ -599,13 +639,13 @@ function itemTotal(list) {
 
 // 調整後ネットデット = 有利子負債 + デットライク項目 − 現預金 − キャッシュライク項目
 // 金額が未入力の項目は合計に含めない（警告の対象）。
-export function calcAdjustedNetDebt(period) {
+export function calcAdjustedNetDebt(period, names) {
   const ctx = toCtx(period);
   const debtLikeTotal = itemTotal(period?.debtLikeItems);
   const cashLikeTotal = itemTotal(period?.cashLikeItems);
   const base = netDebt(ctx);
   const adjusted = isNum(base) ? base + debtLikeTotal - cashLikeTotal : null;
-  const normalized = calcNormalizedEbitda(period).normalized;
+  const normalized = calcNormalizedEbitda(period, names).normalized;
   let multiple;
   if (isNum(normalized) && normalized < 0) multiple = { value: null, status: 'notApplicable' };
   else {

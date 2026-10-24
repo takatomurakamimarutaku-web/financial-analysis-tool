@@ -1,6 +1,9 @@
 // PWA：Service Worker の登録、更新の案内、保存データの永続化要求
 // いずれも非対応の環境ではなにもせず、エラーで止めない。
 
+// アプリのバージョン表示用。sw.js の CACHE_VERSION と同じ値にする（scripts/check-pwa.js で確認）
+export const APP_VERSION = 'v6';
+
 // 新しいバージョンが待機中になったら onUpdateReady(apply) を呼ぶ。
 // apply() を呼ぶと新しいバージョンに切り替えて再読み込みする。
 export function registerServiceWorker(onUpdateReady) {
@@ -46,6 +49,29 @@ export async function requestPersistentStorage() {
     if (!navigator.storage || !navigator.storage.persist) return null;
     if (navigator.storage.persisted && await navigator.storage.persisted()) return true;
     return await navigator.storage.persist();
+  } catch {
+    return null;
+  }
+}
+
+// 更新を今すぐ確認する。戻り値：'checked'（確認した。新しい版があれば onUpdateReady が呼ばれる）/ 'unsupported' / 'failed'
+export async function checkForUpdate() {
+  try {
+    if (!('serviceWorker' in navigator)) return 'unsupported';
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (!reg) return 'unsupported';
+    await reg.update();
+    return 'checked';
+  } catch {
+    return 'failed';
+  }
+}
+
+// 保存データが永続化されているか。戻り値：true / false / null（非対応）
+export async function isStoragePersisted() {
+  try {
+    if (!navigator.storage || !navigator.storage.persisted) return null;
+    return await navigator.storage.persisted();
   } catch {
     return null;
   }

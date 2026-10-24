@@ -135,6 +135,12 @@ input[type="text"]:focus { outline: 2px solid var(--primary); outline-offset: -1
 }
 .amount-row label { font-size: 14px; }
 .amount-row input { text-align: right; }
+/* 内訳科目（親科目の下に字下げ）と、内訳の合計で計算される親科目 */
+.amount-row.child { padding-left: 14px; }
+.amount-row.child label { font-size: 13px; color: var(--muted); }
+.amount-row.child label::before { content: "└ "; }
+.amount-row input.computed { background: var(--bg); color: var(--muted); }
+.computed-note { grid-column: 2 / 4; font-size: 11px; color: var(--muted); text-align: right; margin-top: -2px; }
 .sign-btn {
   min-height: 38px;
   padding: 0;
@@ -498,3 +504,58 @@ input[type="text"]:focus { outline: 2px solid var(--primary); outline-offset: -1
 .section-link[aria-current="true"] { border-color: var(--primary); color: var(--primary); font-weight: 600; }
 /* ジャンプ先が固定ナビの下に隠れないようにする */
 .app-main section[id], .app-main details[id] { scroll-margin-top: var(--nav-height, 104px); }
+
+/* ---- 設定タブ ---- */
+.settings-list { list-style: none; margin: 8px 0 0; padding: 0; }
+.settings-list li + li { border-top: 1px solid var(--border); }
+.settings-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "title arrow" "summary arrow";
+  align-items: center;
+  column-gap: 8px;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 2px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.settings-item-title { grid-area: title; font-size: 15px; }
+.settings-item-summary { grid-area: summary; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.settings-item-arrow { grid-area: arrow; font-size: 22px; color: var(--muted); }
+.settings-back { margin-bottom: 12px; }
+.settings-page .sub-title { margin-top: 16px; }
+.choice-list { display: grid; gap: 8px; margin-top: 8px; }
+.choice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.choice input { width: 20px; height: 20px; margin: 0; flex: none; }
+.choice-title { display: block; font-size: 15px; }
+.choice-note { display: block; font-size: 12px; color: var(--muted); }
+.acc-list { display: grid; gap: 8px; margin-top: 10px; }
+.acc-item { border: 1px solid var(--border); border-radius: 10px; padding: 8px; }
+.acc-item.is-hidden { opacity: 0.6; }
+.acc-row { display: grid; grid-template-columns: minmax(0, 1fr) 44px 44px; gap: 6px; align-items: center; }
+.acc-row.acc-child { grid-template-columns: minmax(0, 1fr) 44px 44px auto; margin-top: 6px; padding-left: 14px; }
+.acc-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; }
+.acc-std { font-size: 12px; color: var(--muted); min-width: 0; overflow-wrap: anywhere; }
+.ind-name { font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
+.acc-add { margin-top: 8px; }
+.toggle { flex: none; }
+.digit-field { margin-top: 12px; }
+.digit-field select { width: 100%; }
+.about-list { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 12px; margin: 8px 0 0; font-size: 14px; }
+.about-list dt { color: var(--muted); }
+.about-list dd { margin: 0; overflow-wrap: anywhere; }
+
+.section-nav[hidden] { display: none; }

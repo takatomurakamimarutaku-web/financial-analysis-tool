@@ -1,14 +1,14 @@
 // 画面描画とイベント処理
 import {
-  PL_FIELDS, BS_FIELDS, CATEGORIES, INDICATORS, MAX_PERIODS, CHART_ROWS,
+  CATEGORIES, INDICATORS, MAX_PERIODS, CHART_ROWS,
   calcIndicators, getWarnings, formatValue, buildResultText, parseAmount, isNum,
-  buildComparison, formatChangeAmount, formatChangeRate,
+  buildComparison, formatChangeAmount, formatChangeRate, formulaText, daysInYearOf,
   ADJUSTMENT_CATEGORIES, calcNormalizedEbitda, getAdjustmentWarnings, buildEbitdaBridge, formatAmount,
   DEBT_LIKE_EXAMPLES, CASH_LIKE_EXAMPLES, calcWorkingCapital, calcWorkingCapitalSeries,
   calcAdjustedNetDebt, getNetDebtItemWarnings, buildNetDebtBreakdown,
 } from './calc.js';
 import {
-  loadData, saveData, createEmptyData, getSampleMultiData,
+  loadData, saveData, createEmptyData, getSampleMultiData, normalizeData,
   addPeriod, removePeriod, movePeriod,
   backupToJson, backupFileName, parseBackup, getLastBackupAt, setLastBackupAt,
   needsBackupReminder, hasAnyData,
@@ -17,7 +17,15 @@ import {
 } from './store.js';
 import { buildLineChartSvg } from './chart.js';
 import { buildComparisonCsv, buildBridgeCsv, buildNetDebtCsv, csvFileName, CSV_KINDS } from './csv.js';
-import { registerServiceWorker, requestPersistentStorage } from './pwa.js';
+import {
+  registerServiceWorker, requestPersistentStorage, checkForUpdate, isStoragePersisted, APP_VERSION,
+} from './pwa.js';
+import {
+  AMOUNT_UNITS, BACKUP_REMINDER_CHOICES, DIGIT_LIMITS, createDefaultSettings, unitOf, toDisplayAmount, fromDisplayAmount,
+  formatOptions, accountLabel, accountTree, renameAccount, setAccountHidden, moveAccount, addCustomAccount,
+  removeCustomAccount, applyAccountTotalsToPeriod, isComputedAccount, indicatorList, setIndicatorHidden, moveIndicator,
+  arrangeComparisonRows, rowLabel, categoryLabel, renameCategory, updateSettings, OTHER_DETAIL_LABEL, MAX_CUSTOM_ACCOUNTS,
+} from './settings.js';
 
 const SAVE_DELAY_MS = 300;
 
@@ -28,6 +36,7 @@ const state = {
   view: 'input',
   basis: 'end',
   showChange: true,
+  settingsPage: null, // 設定タブで開いている画面（null = 一覧）
 };
 
 let saveTimer = null;
@@ -49,10 +58,47 @@ function el(tag, attrs = {}, children = []) {
   return node;
 }
 
-// 入力欄の表示用（内部値は丸めない。表示のみカンマ区切り）
+// ---- 設定に応じた表示 ----
+
+function settings() {
+  return state.data.settings;
+}
+
+function fmt() {
+  return formatOptions(settings());
+}
+
+function unitName() {
+  return unitOf(settings()).name;
+}
+
+function days() {
+  return daysInYearOf(state.data);
+}
+
+function fa(v) {
+  return formatAmount(v, fmt());
+}
+
+function fv(result, unit) {
+  return formatValue(result, unit, fmt());
+}
+
+// 入力欄の表示用（内部値は千円。表示単位に換算し、丸めずにカンマ区切り）
 function formatInput(v) {
-  if (!isNum(v)) return '';
-  return v.toLocaleString('ja-JP', { maximumFractionDigits: 10 });
+  const d = toDisplayAmount(v, settings());
+  if (!isNum(d)) return '';
+  return d.toLocaleString('ja-JP', { maximumFractionDigits: 10 });
+}
+
+// 表示単位で入力された文字列 → 内部値（千円）。解釈できなければ null
+function parseInput(text) {
+  return fromDisplayAmount(parseAmount(text), settings());
+}
+
+// 画面内の「千円」表記を表示単位に合わせる
+function renderUnitLabels() {
+  document.querySelectorAll('.unit-name').forEach((n) => { n.textContent = unitName(); });
 }
 
 function periodName(p, i) {
@@ -79,37 +125,90 @@ function saveNow() {
 
 // ---- 入力タブ ----
 
-function renderAmountFields(containerId, section, fields) {
+function amountInput(id, attrs, value) {
+  const input = el('input', {
+    id, type: 'text', inputmode: 'decimal', autocomplete: 'off', enterkeyhint: 'next', ...attrs,
+  });
+  input.value = formatInput(value);
+  return input;
+}
+
+// 科目の入力欄。並び・名称・非表示は設定に従い、内訳科目は親科目の下に並べる。
+function renderAmountFields(containerId, section) {
   const container = $(containerId);
   container.replaceChildren();
-  const values = currentPeriod()[section];
-  for (const f of fields) {
-    const id = `f-${section}-${f.key}`;
-    const input = el('input', {
-      id,
-      type: 'text',
-      inputmode: 'decimal',
-      autocomplete: 'off',
-      enterkeyhint: 'next',
-      'data-section': section,
-      'data-key': f.key,
-    });
-    input.value = formatInput(values[f.key]);
+  const p = currentPeriod();
+  for (const a of accountTree(settings(), section)) {
+    if (a.hidden) continue;
+    const id = `f-${section}-${a.key}`;
+    const input = amountInput(id, { 'data-section': section, 'data-key': a.key }, p[section][a.key]);
     input.addEventListener('input', onFieldInput);
     input.addEventListener('blur', onFieldBlur);
-    const sign = el('button', {
-      type: 'button',
-      className: 'sign-btn',
-      'aria-label': `${f.label}の符号を反転`,
-      text: '±',
-    });
-    sign.addEventListener('click', () => toggleSign(section, f.key, input));
-    container.append(el('div', { className: 'amount-row' }, [
-      el('label', { for: id, text: f.label }),
-      input,
-      sign,
-    ]));
+    const sign = el('button', { type: 'button', className: 'sign-btn', 'aria-label': `${a.label}の符号を反転`, text: '±' });
+    sign.addEventListener('click', () => toggleSign(section, a.key, input));
+    const row = el('div', { className: 'amount-row', 'data-row': a.key }, [el('label', { for: id, text: a.label }), input, sign]);
+    container.append(row);
+    if (a.children.length) row.append(el('span', { className: 'computed-note', text: '内訳の合計' }));
+    for (const c of a.children) {
+      const cid = `f-detail-${c.key}`;
+      const ci = amountInput(cid, { 'data-detail': c.key, 'data-parent': a.key, 'data-section': section }, p.details?.[c.key]);
+      ci.addEventListener('input', onDetailInput);
+      ci.addEventListener('blur', onDetailBlur);
+      const cs = el('button', { type: 'button', className: 'sign-btn', 'aria-label': `${c.label}の符号を反転`, text: '±' });
+      cs.addEventListener('click', () => toggleDetailSign(c.key, ci));
+      container.append(el('div', { className: 'amount-row child' }, [el('label', { for: cid, text: c.label }), ci, cs]));
+    }
+    refreshParentField(section, a.key);
   }
+}
+
+// 親科目の入力欄：内訳に値がある期は合計を表示して編集不可にする
+function refreshParentField(section, key) {
+  const input = $(`f-${section}-${key}`);
+  if (!input) return;
+  const p = currentPeriod();
+  const computed = isComputedAccount(p, settings(), key);
+  input.readOnly = computed;
+  input.classList.toggle('computed', computed);
+  const row = input.closest('.amount-row');
+  row?.querySelector('.computed-note')?.toggleAttribute('hidden', !computed);
+  if (computed || document.activeElement !== input) input.value = formatInput(p[section][key]);
+}
+
+function setDetail(key, value) {
+  const p = currentPeriod();
+  p.details = { ...(p.details ?? {}), [key]: value };
+  const q = applyAccountTotalsToPeriod(p, settings());
+  p.pl = q.pl;
+  p.bs = q.bs;
+}
+
+function onDetailInput(e) {
+  const input = e.target;
+  const text = input.value.trim();
+  const v = parseInput(text);
+  setDetail(input.dataset.detail, v);
+  input.setAttribute('aria-invalid', text !== '' && v === null ? 'true' : 'false');
+  refreshParentField(input.dataset.section, input.dataset.parent);
+  update();
+}
+
+function onDetailBlur(e) {
+  const v = currentPeriod().details?.[e.target.dataset.detail];
+  if (isNum(v)) e.target.value = formatInput(v);
+}
+
+function toggleDetailSign(key, input) {
+  const v = currentPeriod().details?.[key];
+  if (!isNum(v)) {
+    input.value = '-';
+    input.focus();
+    return;
+  }
+  setDetail(key, -v);
+  input.value = formatInput(-v);
+  refreshParentField(input.dataset.section, input.dataset.parent);
+  update();
 }
 
 function renderPeriodBar() {
@@ -140,8 +239,9 @@ function renderPeriodBar() {
 function renderForm() {
   $('companyName').value = state.data.companyName;
   renderPeriodBar();
-  renderAmountFields('plFields', 'pl', PL_FIELDS);
-  renderAmountFields('bsFields', 'bs', BS_FIELDS);
+  renderAmountFields('plFields', 'pl');
+  renderAmountFields('bsFields', 'bs');
+  renderUnitLabels();
   renderAdjustments();
   renderNetDebtInputs();
 }
@@ -150,7 +250,7 @@ function onFieldInput(e) {
   const input = e.target;
   const { section, key } = input.dataset;
   const text = input.value.trim();
-  const v = parseAmount(text);
+  const v = parseInput(text);
   currentPeriod()[section][key] = v;
   input.setAttribute('aria-invalid', text !== '' && v === null ? 'true' : 'false');
   update();
@@ -211,7 +311,7 @@ function onMovePeriod(delta) {
 function renderInputWarnings() {
   const box = $('warnings');
   box.replaceChildren();
-  for (const w of getWarnings(currentPeriod())) {
+  for (const w of getWarnings(currentPeriod(), fmt())) {
     box.append(el('div', { className: 'warning', text: w.message }));
   }
 }
@@ -232,21 +332,24 @@ function valueClass(base, r) {
 }
 
 function renderInputResults() {
-  const results = calcIndicators(currentPeriod());
+  const results = calcIndicators(currentPeriod(), { days: days() });
   const box = $('results');
   box.replaceChildren();
+  const list = indicatorList(settings());
   for (const cat of CATEGORIES) {
+    const inds = list.filter((i) => i.category === cat.id);
+    if (!inds.length) continue;
     const card = el('section', { className: 'panel category' }, [el('h2', { text: cat.name })]);
-    for (const ind of INDICATORS.filter((i) => i.category === cat.id)) {
+    for (const ind of inds) {
       const r = results[ind.id];
       const details = el('details', { className: 'indicator' }, [
         el('summary', {}, [
           el('span', { className: 'indicator-name', text: ind.name }),
-          el('span', { className: valueClass('indicator-value', r), text: formatValue(r, ind.unit) }),
+          el('span', { className: valueClass('indicator-value', r), text: fv(r, ind.unit) }),
         ]),
         el('dl', { className: 'indicator-detail' }, [
           el('dt', { text: '計算式' }),
-          el('dd', { text: ind.formula }),
+          el('dd', { text: formulaText(ind, days()) }),
           el('dt', { text: '一般的な見方' }),
           el('dd', { text: ind.guide }),
         ]),
@@ -261,7 +364,7 @@ function renderInputResults() {
 
 function formatSigned(v) {
   if (!isNum(v)) return '—';
-  const t = formatAmount(v);
+  const t = fa(v);
   return v > 0 && t !== '0' ? `+${t}` : t;
 }
 
@@ -274,7 +377,7 @@ function renderAdjustments() {
     const idBase = `adj-${i}`;
     const select = el('select', { id: `${idBase}-cat`, 'aria-label': '区分' });
     for (const c of ADJUSTMENT_CATEGORIES) {
-      const o = el('option', { value: c.id, text: c.name });
+      const o = el('option', { value: c.id, text: categoryLabel(settings(), c.id) });
       if (c.id === a.category) o.selected = true;
       select.append(o);
     }
@@ -284,11 +387,11 @@ function renderAdjustments() {
     desc.value = a.description;
     desc.addEventListener('input', () => { a.description = desc.value; onAdjustmentChanged(); });
 
-    const amount = el('input', { id: `${idBase}-amt`, type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: '千円' });
+    const amount = el('input', { id: `${idBase}-amt`, type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: unitName() });
     amount.value = formatInput(a.amount);
     amount.addEventListener('input', () => {
       const text = amount.value.trim();
-      a.amount = parseAmount(text);
+      a.amount = parseInput(text);
       amount.setAttribute('aria-invalid', text !== '' && a.amount === null ? 'true' : 'false');
       onAdjustmentChanged();
     });
@@ -316,7 +419,7 @@ function renderAdjustments() {
       el('label', { className: 'field', for: select.id }, [el('span', { className: 'field-label', text: '区分' }), select]),
       el('label', { className: 'field', for: desc.id }, [el('span', { className: 'field-label', text: '内容' }), desc]),
       el('div', { className: 'field' }, [
-        el('label', { className: 'field-label', for: amount.id, text: '金額（千円。EBITDAに加算は＋、減算は−）' }),
+        el('label', { className: 'field-label', for: amount.id, text: `金額（${unitName()}。EBITDAに加算は＋、減算は−）` }),
         el('div', { className: 'adj-amount' }, [amount, sign]),
       ]),
       el('label', { className: 'field', for: memo.id }, [el('span', { className: 'field-label', text: '根拠メモ' }), memo]),
@@ -346,17 +449,18 @@ function renderAdjustmentSummary() {
     })));
   });
 
-  const r = calcNormalizedEbitda(p);
+  const r = calcNormalizedEbitda(p, settings().adjustmentCategoryNames);
   const table = $('bridgeSingle');
   table.replaceChildren();
+  const u = unitName();
   const row = (name, value, cls = '') => el('tr', { className: cls }, [el('th', { scope: 'row', text: name }), el('td', { text: value })]);
-  table.append(row('報告EBITDA（営業利益＋減価償却費）', isNum(r.reported) ? `${formatAmount(r.reported)}千円` : '—'));
+  table.append(row('報告EBITDA（営業利益＋減価償却費）', isNum(r.reported) ? `${fa(r.reported)}${u}` : '—'));
   for (const c of r.byCategory.filter((x) => x.count > 0)) {
-    table.append(row(`${c.name}（${c.count}件）`, `${formatSigned(c.total)}千円`, 'indent'));
+    table.append(row(`${c.name}（${c.count}件）`, `${formatSigned(c.total)}${u}`, 'indent'));
   }
-  table.append(row('調整額合計', `${formatSigned(r.adjustmentTotal)}千円`));
-  table.append(row('正常化EBITDA', isNum(r.normalized) ? `${formatAmount(r.normalized)}千円` : '—', 'total'));
-  table.append(row('正常化EBITDAマージン', formatValue({ value: r.margin, status: isNum(r.margin) ? 'ok' : 'na' }, '%')));
+  table.append(row('調整額合計', `${formatSigned(r.adjustmentTotal)}${u}`));
+  table.append(row('正常化EBITDA', isNum(r.normalized) ? `${fa(r.normalized)}${u}` : '—', 'total'));
+  table.append(row('正常化EBITDAマージン', fv({ value: r.margin, status: isNum(r.margin) ? 'ok' : 'na' }, '%')));
 }
 
 function onAdjustmentChanged() {
@@ -394,9 +498,9 @@ function renderBridgeTable() {
     const tr = el('tr', { className: cls }, [el('th', { className: 'row-head', scope: 'row', text: r.name })]);
     for (const v of r.values) {
       let text;
-      if (r.unit === '%') text = formatValue({ value: v, status: isNum(v) ? 'ok' : 'na' }, '%');
+      if (r.unit === '%') text = fv({ value: v, status: isNum(v) ? 'ok' : 'na' }, '%');
       else if (r.kind === 'adjustment' || r.kind === 'subtotal') text = formatSigned(v);
-      else text = isNum(v) ? formatAmount(v) : '—';
+      else text = isNum(v) ? fa(v) : '—';
       tr.append(el('td', {}, [el('span', { className: `cell-value${isNum(v) ? (v < 0 ? ' negative' : '') : ' na'}`, text })]));
     }
     tbody.append(tr);
@@ -412,11 +516,15 @@ const LINE_LISTS = [
 ];
 
 function pctText(v) {
-  return formatValue({ value: v, status: isNum(v) ? 'ok' : 'na' }, '%');
+  return fv({ value: v, status: isNum(v) ? 'ok' : 'na' }, '%');
 }
 
 function amountText(v) {
-  return isNum(v) ? `${formatAmount(v)}千円` : '—';
+  return isNum(v) ? `${fa(v)}${unitName()}` : '—';
+}
+
+function acc(key) {
+  return accountLabel(settings(), key);
 }
 
 function renderNetDebtInputs() {
@@ -431,11 +539,11 @@ function renderNetDebtInputs() {
       name.value = it.name;
       name.addEventListener('input', () => { it.name = name.value; onNetDebtChanged(); });
 
-      const amount = el('input', { id: `${idBase}-amt`, type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: '千円' });
+      const amount = el('input', { id: `${idBase}-amt`, type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: unitName() });
       amount.value = formatInput(it.amount);
       amount.addEventListener('input', () => {
         const text = amount.value.trim();
-        it.amount = parseAmount(text);
+        it.amount = parseInput(text);
         amount.setAttribute('aria-invalid', text !== '' && it.amount === null ? 'true' : 'false');
         onNetDebtChanged();
       });
@@ -468,7 +576,7 @@ function renderNetDebtInputs() {
       list.append(el('div', { className: 'adj-item', 'data-list': def.key }, [
         el('label', { className: 'field', for: name.id }, [el('span', { className: 'field-label', text: '名称' }), name]),
         el('div', { className: 'field' }, [
-          el('label', { className: 'field-label', for: amount.id, text: '金額（千円）' }),
+          el('label', { className: 'field-label', for: amount.id, text: `金額（${unitName()}）` }),
           el('div', { className: 'adj-amount' }, [amount, sign]),
         ]),
         el('label', { className: 'field', for: memo.id }, [el('span', { className: 'field-label', text: '根拠メモ' }), memo]),
@@ -502,22 +610,22 @@ function renderNetDebtSummary() {
   const wc = calcWorkingCapital(p);
   const bs = p.bs;
   $('wcSingle').replaceChildren(
-    row('売上債権', amountText(bs.receivables), 'indent'),
-    row('＋ 棚卸資産', amountText(bs.inventory), 'indent'),
-    row('− 仕入債務', amountText(bs.payables), 'indent'),
+    row(acc('receivables'), amountText(bs.receivables), 'indent'),
+    row(`＋ ${acc('inventory')}`, amountText(bs.inventory), 'indent'),
+    row(`− ${acc('payables')}`, amountText(bs.payables), 'indent'),
     row('運転資本', amountText(wc.amount), 'total'),
     row('売上高に対する比率', pctText(wc.ratio)),
   );
 
   const nd = calcAdjustedNetDebt(p);
   $('ndSingle').replaceChildren(
-    row('有利子負債', amountText(nd.interestBearingDebt)),
+    row(acc('interestBearingDebt'), amountText(nd.interestBearingDebt)),
     row('＋ デットライク項目', amountText(nd.debtLikeTotal), 'indent'),
-    row('− 現預金', amountText(nd.cash), 'indent'),
+    row(`− ${acc('cash')}`, amountText(nd.cash), 'indent'),
     row('− キャッシュライク項目', amountText(nd.cashLikeTotal), 'indent'),
     row('調整後ネットデット', amountText(nd.adjusted), 'total'),
     row('正常化EBITDA', amountText(nd.normalizedEbitda)),
-    row('調整後ネットデット ÷ 正常化EBITDA', formatValue(nd.multiple, '倍')),
+    row('調整後ネットデット ÷ 正常化EBITDA', fv(nd.multiple, '倍')),
   );
 }
 
@@ -558,10 +666,10 @@ function renderWorkingCapitalTable() {
     tr.append(valueCell(avg === undefined ? '' : fmt(avg), avg ?? null, 'avg-col'));
     tbody.append(tr);
   };
-  const amt = (v) => (isNum(v) ? formatAmount(v) : '—');
-  line('売上債権', periods.map((p) => p.bs.receivables), undefined, amt, 'indent');
-  line('＋ 棚卸資産', periods.map((p) => p.bs.inventory), undefined, amt, 'indent');
-  line('− 仕入債務', periods.map((p) => p.bs.payables), undefined, amt, 'indent');
+  const amt = (v) => (isNum(v) ? fa(v) : '—');
+  line(acc('receivables'), periods.map((p) => p.bs.receivables), undefined, amt, 'indent');
+  line(`＋ ${acc('inventory')}`, periods.map((p) => p.bs.inventory), undefined, amt, 'indent');
+  line(`− ${acc('payables')}`, periods.map((p) => p.bs.payables), undefined, amt, 'indent');
   line('運転資本', s.items.map((x) => x.amount), s.average, amt, 'total');
   line('売上高に対する比率', s.items.map((x) => x.ratio), s.averageRatio, pctText);
   table.append(tbody);
@@ -575,11 +683,11 @@ function renderNetDebtTable() {
   for (const r of b.rows) {
     const cls = r.kind === 'total' ? 'total' : r.kind === 'reference' ? 'reference' : r.kind === 'base' ? '' : 'indent';
     const tr = el('tr', { className: cls }, [el('th', { className: 'row-head', scope: 'row', text: r.name })]);
-    r.values.forEach((v) => tr.append(valueCell(isNum(v) ? formatAmount(v) : '—', v)));
+    r.values.forEach((v) => tr.append(valueCell(isNum(v) ? fa(v) : '—', v)));
     tbody.append(tr);
   }
   const tr = el('tr', {}, [el('th', { className: 'row-head', scope: 'row', text: '調整後ネットデット ÷ 正常化EBITDA' })]);
-  b.multiples.forEach((m) => tr.append(valueCell(formatValue(m, '倍'), m.status === 'ok' ? m.value : null)));
+  b.multiples.forEach((m) => tr.append(valueCell(fv(m, '倍'), m.status === 'ok' ? m.value : null)));
   tbody.append(tr);
   table.append(tbody);
 }
@@ -640,17 +748,17 @@ function renderReport() {
   const now = new Date();
   box.append(
     el('h1', { text: '財務分析レポート' }),
-    el('p', { className: 'report-meta', text: `会社名：${data.companyName || '（未入力）'}　対象期：${labels.join('、')}　作成日：${formatDateTime(now).slice(0, 10)}　金額単位：千円` }),
+    el('p', { className: 'report-meta', text: `会社名：${data.companyName || '（未入力）'}　対象期：${labels.join('、')}　作成日：${formatDateTime(now).slice(0, 10)}　金額単位：${unitName()}` }),
   );
 
   // 主要指標
   const cmp = buildComparison(data, 'end');
   const rows = REPORT_ROWS.map((id) => cmp.rows.find((r) => r.id === id)).filter(Boolean).map((r) => ({
-    name: r.name,
+    name: rowLabel(settings(), r),
     cells: r.cells.map((c) => ({
       text: r.group === 'amounts' || r.unit === '千円'
-        ? (isNum(c.result.value) ? formatAmount(c.result.value) : (c.result.status === 'notApplicable' ? '参考外' : '—'))
-        : formatValue(c.result, r.unit),
+        ? (isNum(c.result.value) ? fa(c.result.value) : (c.result.status === 'notApplicable' ? '参考外' : '—'))
+        : fv(c.result, r.unit),
       neg: c.result.status === 'ok' && c.result.value < 0,
     })),
   }));
@@ -664,7 +772,7 @@ function renderReport() {
       name: r.name,
       cls: r.kind === 'adjustment' ? 'indent' : r.kind === 'total' ? 'total' : '',
       cells: r.values.map((v) => ({
-        text: r.unit === '%' ? pctText(v) : r.kind === 'adjustment' || r.kind === 'subtotal' ? formatSigned(v) : (isNum(v) ? formatAmount(v) : '—'),
+        text: r.unit === '%' ? pctText(v) : r.kind === 'adjustment' || r.kind === 'subtotal' ? formatSigned(v) : (isNum(v) ? fa(v) : '—'),
         neg: isNum(v) && v < 0,
       })),
     }))),
@@ -673,7 +781,7 @@ function renderReport() {
   // 調整項目の明細
   const adjRows = [];
   data.periods.forEach((p, i) => {
-    for (const a of p.adjustments) adjRows.push([labels[i], ADJUSTMENT_CATEGORIES.find((c) => c.id === a.category)?.name ?? 'その他', a.description || '—', a.amount, a.memo || '（根拠未記載）']);
+    for (const a of p.adjustments) adjRows.push([labels[i], categoryLabel(settings(), a.category), a.description || '—', a.amount, a.memo || '（根拠未記載）']);
   });
   if (adjRows.length) {
     const tbody = el('tbody');
@@ -694,9 +802,9 @@ function renderReport() {
   const ndRows = nd.rows.map((r) => ({
     name: r.name,
     cls: r.kind === 'total' ? 'total' : ['debtLike', 'cash', 'cashLike'].includes(r.kind) ? 'indent' : '',
-    cells: r.values.map((v) => ({ text: isNum(v) ? formatAmount(v) : '—', neg: isNum(v) && v < 0 })),
+    cells: r.values.map((v) => ({ text: isNum(v) ? fa(v) : '—', neg: isNum(v) && v < 0 })),
   }));
-  ndRows.push({ name: '調整後ネットデット ÷ 正常化EBITDA', cells: nd.multiples.map((m) => ({ text: formatValue(m, '倍'), neg: m.status === 'ok' && m.value < 0 })) });
+  ndRows.push({ name: '調整後ネットデット ÷ 正常化EBITDA', cells: nd.multiples.map((m) => ({ text: fv(m, '倍'), neg: m.status === 'ok' && m.value < 0 })) });
   box.append(el('section', {}, [el('h2', { text: 'ネットデット内訳' }), reportTable(labels, ndRows)]));
 
   // 運転資本
@@ -704,7 +812,7 @@ function renderReport() {
   box.append(el('section', {}, [
     el('h2', { text: '運転資本（トレード）' }),
     reportTable([...labels, '参考：平均'], [
-      { name: '運転資本', cells: [...wc.items.map((x) => x.amount), wc.average].map((v) => ({ text: isNum(v) ? formatAmount(v) : '—', neg: isNum(v) && v < 0 })) },
+      { name: '運転資本', cells: [...wc.items.map((x) => x.amount), wc.average].map((v) => ({ text: isNum(v) ? fa(v) : '—', neg: isNum(v) && v < 0 })) },
       { name: '売上高に対する比率', cells: [...wc.items.map((x) => x.ratio), wc.averageRatio].map((v) => ({ text: pctText(v) })) },
     ]),
   ]));
@@ -712,10 +820,11 @@ function renderReport() {
   // 警告・注記
   const warnings = [];
   data.periods.forEach((p, i) => {
-    for (const w of [...getWarnings(p), ...getAdjustmentWarnings(p), ...getNetDebtItemWarnings(p)]) warnings.push(`${labels[i]}：${w.message}`);
+    for (const w of [...getWarnings(p, fmt()), ...getAdjustmentWarnings(p), ...getNetDebtItemWarnings(p)]) warnings.push(`${labels[i]}：${w.message}`);
   });
   const notes = [
-    '金額単位は千円。計算は入力値をそのまま用い、表示時のみ丸めています。',
+    `金額単位は${unitName()}。計算は入力値をそのまま用い、表示時のみ丸めています。`,
+    `回転日数は1年を${days()}日として計算しています。`,
     '指標は期末残高ベースです。分母が0または未入力の指標は「—」、債務超過等で意味をなさない指標は「参考外」としています。',
     '正常化EBITDA ＝ 報告EBITDA（営業利益＋減価償却費）＋ 調整額合計。調整の妥当性は各根拠メモをご確認ください。',
     '調整後ネットデット ＝ 有利子負債 ＋ デットライク項目 − 現預金 − キャッシュライク項目。',
@@ -750,7 +859,10 @@ function onDeleteAll() {
 
 // ---- 比較タブ ----
 
-const GROUP_NAMES = { amounts: '主要数値（千円）', ...Object.fromEntries(CATEGORIES.map((c) => [c.id, c.name])) };
+function groupName(group) {
+  if (group === 'amounts') return `主要数値（${unitName()}）`;
+  return CATEGORIES.find((c) => c.id === group)?.name ?? '';
+}
 
 function renderCompare() {
   document.querySelectorAll('.seg').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.basis === state.basis)));
@@ -769,14 +881,14 @@ function renderCompare() {
 
   const tbody = el('tbody');
   let group = null;
-  for (const row of cmp.rows) {
+  for (const row of arrangeComparisonRows(settings(), cmp.rows)) {
     if (row.group !== group) {
       group = row.group;
       tbody.append(el('tr', { className: 'group-row' }, [
-        el('th', { colspan: String(cmp.labels.length + 1), scope: 'colgroup' }, [el('span', { text: GROUP_NAMES[group] })]),
+        el('th', { colspan: String(cmp.labels.length + 1), scope: 'colgroup' }, [el('span', { text: groupName(group) })]),
       ]));
     }
-    const head = el('th', { className: 'row-head', scope: 'row', text: row.name });
+    const head = el('th', { className: 'row-head', scope: 'row', text: rowLabel(settings(), row) });
     if (state.basis === 'average' && row.averageable) head.append(el('span', { className: 'avg-mark', text: '★' }));
     const tr = el('tr', {}, [head]);
     for (const cell of row.cells) {
@@ -784,13 +896,13 @@ function renderCompare() {
         el('span', {
           className: valueClass('cell-value', cell.result),
           text: row.unit === '千円' && row.group === 'amounts'
-            ? (isNum(cell.result.value) ? cell.result.value.toLocaleString('ja-JP', { maximumFractionDigits: 0 }) : '—')
-            : formatValue(cell.result, row.unit),
+            ? (isNum(cell.result.value) ? fa(cell.result.value) : '—')
+            : fv(cell.result, row.unit),
         }),
       ]);
       if (state.showChange && cell.change) {
-        td.append(el('span', { className: 'cell-change', text: formatChangeAmount(cell.change, row.unit) }));
-        td.append(el('span', { className: 'cell-change', text: formatChangeRate(cell.change) }));
+        td.append(el('span', { className: 'cell-change', text: formatChangeAmount(cell.change, row.unit, fmt()) }));
+        td.append(el('span', { className: 'cell-change', text: formatChangeRate(cell.change, fmt()) }));
       }
       tr.append(td);
     }
@@ -804,9 +916,11 @@ function renderCompare() {
   renderCharts(cmp);
 }
 
+// グラフの値は内部値（千円）のまま描き、目盛りの表示だけ表示単位に換算する
 function tickFormatFor(unit) {
   if (unit === '%') return (v) => `${Number((v * 100).toPrecision(6))}%`;
-  return (v) => v.toLocaleString('ja-JP', { maximumFractionDigits: 2 });
+  const scale = unit === '千円' ? unitOf(settings()).scale : 1;
+  return (v) => Number((v * scale).toPrecision(10)).toLocaleString('ja-JP', { maximumFractionDigits: 2 });
 }
 
 function renderCharts(cmp) {
@@ -820,10 +934,10 @@ function renderCharts(cmp) {
       labels,
       values,
       title: row.name,
-      format: (v) => formatValue({ value: v, status: 'ok' }, row.unit),
+      format: (v) => fv({ value: v, status: 'ok' }, row.unit),
       tickFormat: tickFormatFor(row.unit),
     });
-    const card = el('div', { className: 'panel chart-card' }, [el('h3', { text: row.unit === '千円' ? `${row.name}（千円）` : row.name })]);
+    const card = el('div', { className: 'panel chart-card' }, [el('h3', { text: row.unit === '千円' ? `${rowLabel(settings(), row)}（${unitName()}）` : rowLabel(settings(), row) })]);
     // svg は chart.js で全テキストをエスケープ済み
     const holder = el('div');
     holder.innerHTML = svg;
@@ -882,6 +996,7 @@ function jumpTo(id) {
 function renderSectionNav(view) {
   const nav = $('sectionNav');
   const items = SECTION_NAV[view] ?? [];
+  nav.hidden = items.length === 0;
   nav.replaceChildren(...items.map(([id, label]) => {
     const b = el('button', { type: 'button', className: 'section-link', 'data-target': id, text: label });
     b.addEventListener('click', () => jumpTo(id));
@@ -898,6 +1013,323 @@ function renderSectionNav(view) {
   updateNavHeight();
 }
 
+// ---- 設定タブ ----
+
+const SETTINGS_PAGES = [
+  { id: 'unit', title: '表示単位', summary: () => unitName() },
+  { id: 'pl', title: 'PL科目', summary: () => accountSummary('pl') },
+  { id: 'bs', title: 'BS科目', summary: () => accountSummary('bs') },
+  { id: 'indicators', title: '指標の表示・並び順', summary: () => `${INDICATORS.length}件中${indicatorList(settings()).length}件を表示` },
+  { id: 'analysis', title: '分析の基本設定', summary: () => `1年＝${days()}日・比較の初期値：${settings().analysis.defaultBasis === 'average' ? '平均残高' : '期末残高'}` },
+  { id: 'digits', title: '表示桁数', summary: () => `%：${settings().digits.pct}桁・日：${settings().digits.days}桁・倍/回：${settings().digits.times}桁` },
+  { id: 'categories', title: '正常化EBITDAの調整区分', summary: () => `${Object.keys(settings().adjustmentCategoryNames).length}件を名称変更` },
+  { id: 'data', title: 'バックアップ・データ管理', summary: () => (settings().backupReminderDays ? `${settings().backupReminderDays}日ごとに案内` : 'バックアップの案内なし') },
+  { id: 'about', title: 'アプリ情報', summary: () => `バージョン ${APP_VERSION}` },
+];
+
+function accountSummary(section) {
+  const tree = accountTree(settings(), section);
+  const hidden = tree.filter((a) => a.hidden).length;
+  const kids = tree.reduce((n, a) => n + a.children.length, 0);
+  const parts = [`${tree.length}科目`];
+  if (hidden) parts.push(`非表示${hidden}`);
+  if (kids) parts.push(`内訳${kids}`);
+  return parts.join('・');
+}
+
+// 設定を変更して保存し、関係する画面を描き直す
+function changeSettings(next, { rerenderPage = true } = {}) {
+  state.data = next;
+  renderForm();
+  update();
+  if (rerenderPage) renderSettings();
+}
+
+function openSettingsPage(id) {
+  state.settingsPage = id;
+  renderSettings();
+  window.scrollTo(0, 0);
+}
+
+function renderSettings() {
+  const box = $('settingsBody');
+  box.replaceChildren();
+  const page = SETTINGS_PAGES.find((p) => p.id === state.settingsPage);
+  if (!page) {
+    const list = el('ul', { className: 'settings-list' });
+    for (const p of SETTINGS_PAGES) {
+      const b = el('button', { type: 'button', className: 'settings-item' }, [
+        el('span', { className: 'settings-item-title', text: p.title }),
+        el('span', { className: 'settings-item-summary', text: p.summary() }),
+        el('span', { className: 'settings-item-arrow', 'aria-hidden': 'true', text: '›' }),
+      ]);
+      b.addEventListener('click', () => openSettingsPage(p.id));
+      list.append(el('li', {}, [b]));
+    }
+    box.append(el('section', { className: 'panel' }, [el('h2', { className: 'panel-title', text: '設定' }), list]));
+    box.append(el('p', { className: 'note', text: '設定はこの端末のデータと一緒に保存され、JSONバックアップにも含まれます。' }));
+    return;
+  }
+  const back = el('button', { type: 'button', className: 'btn settings-back', text: '← 設定に戻る' });
+  back.addEventListener('click', () => openSettingsPage(null));
+  const panel = el('section', { className: 'panel settings-page' }, [el('h2', { className: 'panel-title', text: page.title })]);
+  box.append(back, panel);
+  SETTINGS_RENDERERS[page.id](panel);
+}
+
+function radioGroup(name, options, current, onChange) {
+  const group = el('div', { className: 'choice-list', role: 'radiogroup' });
+  for (const o of options) {
+    const input = el('input', { type: 'radio', name, value: String(o.value) });
+    input.checked = o.value === current;
+    input.addEventListener('change', () => onChange(o.value));
+    group.append(el('label', { className: 'choice' }, [input, el('span', {}, [
+      el('span', { className: 'choice-title', text: o.label }),
+      ...(o.note ? [el('span', { className: 'choice-note', text: o.note })] : []),
+    ])]));
+  }
+  return group;
+}
+
+function smallBtn(text, label, onClick, disabled = false) {
+  const b = el('button', { type: 'button', className: 'btn btn-icon btn-small', 'aria-label': label, text });
+  b.disabled = disabled;
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+function toggle(label, checked, onChange) {
+  const input = el('input', { type: 'checkbox' });
+  input.checked = checked;
+  input.addEventListener('change', () => onChange(input.checked));
+  return el('label', { className: 'check toggle' }, [input, el('span', { text: label })]);
+}
+
+function renderUnitPage(panel) {
+  panel.append(
+    el('p', { className: 'note', text: '入力と表示に使う金額の単位です。保存されている金額は変わらず、表示だけが切り替わります（例：1,000千円 → 1,000,000円）。CSV・レポートもこの単位で出力します。' }),
+    radioGroup('unit', AMOUNT_UNITS.map((u) => ({
+      value: u.id, label: u.name,
+      note: u.id === 'million' ? '小数第1位まで表示' : u.id === 'yen' ? '入力も円単位で行います' : '従来どおり',
+    })), settings().unit, (v) => changeSettings(updateSettings(state.data, { unit: v }))),
+  );
+}
+
+function renderAccountsPage(section, panel) {
+  panel.append(el('p', { className: 'note', text: '↑↓で並び替え、名称を書き換えると入力画面の表示名が変わります（空欄にすると標準名に戻ります）。計算に使う標準科目は削除できないため、使わない科目は「表示」を外してください（入力済みの値は計算に使われます）。' }));
+  panel.append(el('p', { className: 'note', text: `「＋内訳」で科目の内訳を追加できます。内訳に金額を入れた期は、親科目が内訳の合計で自動計算されます。親科目に入力済みの金額は「${OTHER_DETAIL_LABEL}」の内訳に移すため、合計は変わりません。` }));
+  const tree = accountTree(settings(), section);
+  const list = el('div', { className: 'acc-list' });
+  const full = settings().accounts.custom.length >= MAX_CUSTOM_ACCOUNTS;
+  tree.forEach((a, i) => {
+    const name = el('input', { type: 'text', autocomplete: 'off', placeholder: a.standardLabel, 'aria-label': `${a.standardLabel}の表示名` });
+    name.value = a.renamed ? a.label : '';
+    name.addEventListener('change', () => changeSettings(updateSettings(state.data, { accounts: renameAccount(settings(), a.key, name.value.trim()).accounts })));
+    const card = el('div', { className: `acc-item${a.hidden ? ' is-hidden' : ''}`, 'data-key': a.key }, [
+      el('div', { className: 'acc-row' }, [
+        name,
+        smallBtn('↑', `${a.label}を上へ`, () => changeSettings(updateSettings(state.data, { accounts: moveAccount(settings(), a.key, -1).accounts })), i === 0),
+        smallBtn('↓', `${a.label}を下へ`, () => changeSettings(updateSettings(state.data, { accounts: moveAccount(settings(), a.key, 1).accounts })), i === tree.length - 1),
+      ]),
+      el('div', { className: 'acc-meta' }, [
+        el('span', { className: 'acc-std', text: a.renamed ? `標準名：${a.standardLabel}` : '標準科目' }),
+        toggle('表示', !a.hidden, (on) => changeSettings(updateSettings(state.data, { accounts: setAccountHidden(settings(), a.key, !on).accounts }))),
+      ]),
+    ]);
+    a.children.forEach((c, j) => {
+      const cn = el('input', { type: 'text', autocomplete: 'off', placeholder: '内訳の名称', 'aria-label': `${a.label}の内訳の名称`, 'data-child': c.key });
+      cn.value = settings().accounts.custom.find((x) => x.key === c.key)?.label ?? '';
+      cn.addEventListener('change', () => changeSettings(updateSettings(state.data, { accounts: renameAccount(settings(), c.key, cn.value.trim()).accounts })));
+      const del = el('button', { type: 'button', className: 'btn btn-danger btn-small', text: '削除' });
+      del.addEventListener('click', () => {
+        if (!window.confirm(`内訳「${c.label}」を削除します。全期の入力値も削除され、${a.label}は残りの内訳の合計で再計算されます。よろしいですか？`)) return;
+        changeSettings(removeCustomAccount(state.data, c.key));
+        showToast('内訳を削除しました');
+      });
+      card.append(el('div', { className: 'acc-row acc-child' }, [
+        cn,
+        smallBtn('↑', `${c.label}を上へ`, () => changeSettings(updateSettings(state.data, { accounts: moveAccount(settings(), c.key, -1).accounts })), j === 0),
+        smallBtn('↓', `${c.label}を下へ`, () => changeSettings(updateSettings(state.data, { accounts: moveAccount(settings(), c.key, 1).accounts })), j === a.children.length - 1),
+        del,
+      ]));
+    });
+    const add = el('button', { type: 'button', className: 'btn btn-small acc-add', text: `＋ ${a.label}の内訳` });
+    add.disabled = full;
+    add.addEventListener('click', () => {
+      const moved = !a.children.length && state.data.periods.some((p) => isNum(p[section][a.key]));
+      const { data, key } = addCustomAccount(state.data, a.key, '');
+      if (!key) return;
+      changeSettings(data);
+      if (moved) showToast(`入力済みの金額は内訳「${OTHER_DETAIL_LABEL}」に移しました`);
+      $('settingsBody').querySelector(`[data-child="${key}"]`)?.focus();
+    });
+    card.append(add);
+    list.append(card);
+  });
+  panel.append(list);
+  if (full) panel.append(el('p', { className: 'note', text: `内訳は全体で${MAX_CUSTOM_ACCOUNTS}件までです。` }));
+  const reset = el('button', { type: 'button', className: 'btn', text: '名称・並び・表示を初期状態に戻す' });
+  reset.addEventListener('click', () => {
+    if (!window.confirm('この表の科目の名称・並び順・表示を初期状態に戻します（内訳と入力値はそのまま）。よろしいですか？')) return;
+    changeSettings(updateSettings(state.data, { accounts: { ...settings().accounts, [section]: createDefaultSettings().accounts[section] } }));
+  });
+  panel.append(el('div', { className: 'actions' }, [reset]));
+}
+
+function renderIndicatorsPage(panel) {
+  panel.append(el('p', { className: 'note', text: '「表示」を外した指標は、入力タブの分析結果・比較表・比較表CSV・結果テキストに表示しません（計算はされています）。↑↓で区分内の並び順を変えられます。印刷用レポートは常に主要指標を載せます。' }));
+  const all = indicatorList(settings(), true);
+  for (const cat of CATEGORIES) {
+    const inds = all.filter((i) => i.category === cat.id);
+    const list = el('div', { className: 'acc-list' });
+    inds.forEach((ind, i) => {
+      list.append(el('div', { className: `acc-item${ind.hidden ? ' is-hidden' : ''}` }, [
+        el('div', { className: 'acc-row' }, [
+          el('span', { className: 'ind-name', text: ind.name }),
+          smallBtn('↑', `${ind.name}を上へ`, () => changeSettings(updateSettings(state.data, { indicators: moveIndicator(settings(), ind.id, -1).indicators })), i === 0),
+          smallBtn('↓', `${ind.name}を下へ`, () => changeSettings(updateSettings(state.data, { indicators: moveIndicator(settings(), ind.id, 1).indicators })), i === inds.length - 1),
+        ]),
+        el('div', { className: 'acc-meta' }, [
+          el('span', { className: 'acc-std', text: formulaText(ind, days()) }),
+          toggle('表示', !ind.hidden, (on) => changeSettings(updateSettings(state.data, { indicators: setIndicatorHidden(settings(), ind.id, !on).indicators }))),
+        ]),
+      ]));
+    });
+    panel.append(el('h3', { className: 'sub-title', text: cat.name }), list);
+  }
+}
+
+function renderAnalysisPage(panel) {
+  const an = settings().analysis;
+  panel.append(
+    el('h3', { className: 'sub-title', text: '回転日数の1年の日数' }),
+    el('p', { className: 'note', text: '売上債権・棚卸資産・仕入債務の回転日数とCCCの計算に使います。' }),
+    radioGroup('days', [
+      { value: 365, label: '365日', note: '一般的な計算' },
+      { value: 360, label: '360日', note: '金融機関などで使われる簡便法' },
+    ], an.daysInYear, (v) => changeSettings(updateSettings(state.data, { analysis: { ...settings().analysis, daysInYear: v } }))),
+    el('h3', { className: 'sub-title', text: '比較タブの計算基準（初期値）' }),
+    el('p', { className: 'note', text: 'アプリを開いたときの比較タブの基準です。比較タブで一時的に切り替えることもできます。' }),
+    radioGroup('basis', [
+      { value: 'end', label: '期末残高' },
+      { value: 'average', label: '平均残高', note: 'ROA・ROE・回転日数・CCC を (前期末＋当期末)÷2 で計算' },
+    ], an.defaultBasis, (v) => {
+      state.basis = v;
+      changeSettings(updateSettings(state.data, { analysis: { ...settings().analysis, defaultBasis: v } }));
+    }),
+  );
+}
+
+function digitSelect(label, key, unitLabel) {
+  const [min, max] = DIGIT_LIMITS[key];
+  const select = el('select', { 'aria-label': label });
+  for (let d = min; d <= max; d += 1) {
+    const o = el('option', { value: String(d), text: `${d}桁` });
+    if (d === settings().digits[key]) o.selected = true;
+    select.append(o);
+  }
+  select.addEventListener('change', () => changeSettings(updateSettings(state.data, { digits: { ...settings().digits, [key]: Number(select.value) } })));
+  const sample = { pct: 0.123456, days: 45.6789, times: 1.23456 }[key];
+  const unit = { pct: '%', days: '日', times: '倍' }[key];
+  return el('label', { className: 'field digit-field' }, [
+    el('span', { className: 'field-label', text: `${label}（例：${fv({ value: sample, status: 'ok' }, unit)}）` }),
+    select,
+    el('span', { className: 'note', text: unitLabel }),
+  ]);
+}
+
+function renderDigitsPage(panel) {
+  panel.append(
+    el('p', { className: 'note', text: '小数点以下の表示桁数です。計算は丸めずに行い、表示のときだけ四捨五入します。' }),
+    digitSelect('%の指標', 'pct', '利益率・ROE・自己資本比率など（前期比のpt・増減率も同じ桁数）'),
+    digitSelect('日数の指標', 'days', '回転日数・CCC'),
+    digitSelect('倍・回の指標', 'times', 'D/Eレシオ・ICR・総資産回転率など'),
+  );
+}
+
+function renderCategoriesPage(panel) {
+  panel.append(el('p', { className: 'note', text: '正常化EBITDAの調整区分の表示名を変更できます（空欄にすると元の名称に戻ります）。区分の追加・削除はできません。該当しない調整は「その他」を使ってください。' }));
+  for (const c of ADJUSTMENT_CATEGORIES) {
+    const input = el('input', { type: 'text', autocomplete: 'off', placeholder: c.name, 'aria-label': `${c.name}の表示名` });
+    input.value = settings().adjustmentCategoryNames[c.id] ?? '';
+    input.addEventListener('change', () => changeSettings(updateSettings(state.data, { adjustmentCategoryNames: renameCategory(settings(), c.id, input.value.trim()).adjustmentCategoryNames })));
+    panel.append(el('label', { className: 'field' }, [el('span', { className: 'field-label', text: `標準名：${c.name}` }), input]));
+  }
+}
+
+function renderDataPage(panel) {
+  const select = el('select', { 'aria-label': 'バックアップの案内' });
+  for (const d of BACKUP_REMINDER_CHOICES) {
+    const o = el('option', { value: String(d), text: d ? `${d}日ごと` : '案内しない' });
+    if (d === settings().backupReminderDays) o.selected = true;
+    select.append(o);
+  }
+  select.addEventListener('change', () => changeSettings(updateSettings(state.data, { backupReminderDays: Number(select.value) })));
+  const last = getLastBackupAt();
+  const btn = (text, cls, fn) => {
+    const b = el('button', { type: 'button', className: `btn ${cls}`, text });
+    b.addEventListener('click', fn);
+    return b;
+  };
+  panel.append(
+    el('label', { className: 'field' }, [el('span', { className: 'field-label', text: 'バックアップの案内' }), select]),
+    el('p', { className: 'note', text: `最終バックアップ：${last ? formatDateTime(last) : '未実施'}。前回のバックアップから設定した日数がたつと、入力タブに案内を表示します。` }),
+    el('div', { className: 'actions' }, [
+      btn('バックアップを保存', '', async () => { await onExport(); renderSettings(); }),
+      btn('バックアップから復元', '', onImportClick),
+    ]),
+    el('h3', { className: 'sub-title', text: '初期化' }),
+    el('div', { className: 'actions' }, [
+      btn('設定を初期値に戻す', '', onResetSettings),
+      btn('すべてのデータを削除', 'btn-danger', () => { onDeleteAll(); renderSettings(); }),
+    ]),
+    el('p', { className: 'note', text: '「設定を初期値に戻す」は入力した金額を残します（内訳科目は削除し、親科目は内訳の合計のまま入力欄に戻ります）。' }),
+  );
+}
+
+function onResetSettings() {
+  if (!window.confirm('すべての設定（表示単位・科目・指標・桁数など）を初期値に戻します。内訳科目は削除されます（親科目の金額は残ります）。よろしいですか？')) return;
+  // 内訳の値だけを消し、親科目は現在の金額（内訳の合計）のまま残す
+  const periods = state.data.periods.map((p) => ({ ...p, details: {} }));
+  state.basis = 'end';
+  changeSettings({ ...state.data, periods, settings: createDefaultSettings() });
+  showToast('設定を初期値に戻しました');
+}
+
+function renderAboutPage(panel) {
+  const persisted = el('dd', { text: '確認中…' });
+  isStoragePersisted().then((v) => { persisted.textContent = v === true ? '保護あり（自動削除されにくい）' : v === false ? '保護なし（空き容量不足などで消えることがあります）' : '確認できません'; });
+  const check = el('button', { type: 'button', className: 'btn', text: '更新を確認' });
+  check.addEventListener('click', async () => {
+    check.disabled = true;
+    const r = await checkForUpdate();
+    check.disabled = false;
+    if (r === 'checked') showToast($('updateBar').hidden ? '確認しました（新しいバージョンがあれば画面下に表示されます）' : '新しいバージョンがあります。画面下の［更新］を押してください');
+    else showToast('この環境では更新を確認できません');
+  });
+  panel.append(
+    el('dl', { className: 'about-list' }, [
+      el('dt', { text: 'アプリのバージョン' }), el('dd', { text: APP_VERSION }),
+      el('dt', { text: 'データ形式' }), el('dd', { text: `version ${state.data.version}` }),
+      el('dt', { text: '保存先' }), el('dd', { text: 'この端末のブラウザ内（外部には送信しません）' }),
+      el('dt', { text: '保存データの保護' }), persisted,
+    ]),
+    el('div', { className: 'actions' }, [check]),
+  );
+}
+
+const SETTINGS_RENDERERS = {
+  unit: renderUnitPage,
+  pl: (panel) => renderAccountsPage('pl', panel),
+  bs: (panel) => renderAccountsPage('bs', panel),
+  indicators: renderIndicatorsPage,
+  analysis: renderAnalysisPage,
+  digits: renderDigitsPage,
+  categories: renderCategoriesPage,
+  data: renderDataPage,
+  about: renderAboutPage,
+};
+
 // ---- 共通 ----
 
 function setView(view) {
@@ -905,6 +1337,7 @@ function setView(view) {
   document.querySelectorAll('.tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.view === view)));
   $('view-input').hidden = view !== 'input';
   $('view-compare').hidden = view !== 'compare';
+  $('view-settings').hidden = view !== 'settings';
   const reporting = view === 'report';
   document.body.classList.toggle('reporting', reporting);
   document.querySelector('.app-header').hidden = reporting;
@@ -913,6 +1346,7 @@ function setView(view) {
   if (!reporting) renderSectionNav(view);
   $('view-report').hidden = !reporting;
   if (view === 'compare') renderCompare();
+  if (view === 'settings') renderSettings();
   if (reporting) renderReport();
   window.scrollTo(0, 0);
 }
@@ -941,7 +1375,7 @@ function formatDateTime(d) {
 function renderBackupStatus() {
   const last = getLastBackupAt();
   $('lastBackup').textContent = last ? `最終バックアップ：${formatDateTime(last)}` : '最終バックアップ：未実施';
-  $('backupReminder').hidden = !needsBackupReminder(last, hasAnyInput());
+  $('backupReminder').hidden = !needsBackupReminder(last, hasAnyInput(), new Date(), settings().backupReminderDays);
 }
 
 function downloadFile(file) {
@@ -993,6 +1427,8 @@ async function onImportFile(e) {
   if (!window.confirm(`バックアップ${when}で現在のデータを上書きします。よろしいですか？`)) return;
   state.data = result.data;
   state.selected = state.data.periods.length - 1;
+  state.basis = state.data.settings.analysis.defaultBasis;
+  if (state.view === 'settings') renderSettings();
   renderForm();
   update();
   saveNow();
@@ -1001,7 +1437,7 @@ async function onImportFile(e) {
 
 function onLoadSample() {
   if (hasAnyInput() && !window.confirm('入力中のデータをサンプルデータで上書きします。よろしいですか？')) return;
-  state.data = getSampleMultiData();
+  state.data = normalizeData({ ...getSampleMultiData(), settings: settings() });
   state.selected = state.data.periods.length - 1;
   renderForm();
   update();
@@ -1010,8 +1446,8 @@ function onLoadSample() {
 }
 
 function onClear() {
-  if (!window.confirm('すべての期の入力内容をクリアします。よろしいですか？')) return;
-  state.data = createEmptyData();
+  if (!window.confirm('すべての期の入力内容をクリアします（設定はそのまま）。よろしいですか？')) return;
+  state.data = createEmptyData(settings());
   state.selected = 0;
   renderForm();
   update();
@@ -1044,7 +1480,8 @@ async function copyText(text) {
 
 async function onCopy() {
   const p = currentPeriod();
-  const text = buildResultText(state.data, calcIndicators(p), getWarnings(p), state.selected);
+  const opts = { ...fmt(), indicators: indicatorList(settings()) };
+  const text = buildResultText(state.data, calcIndicators(p, { days: days() }), getWarnings(p, fmt()), state.selected, opts);
   const ok = await copyText(text);
   showToast(ok ? `${periodName(p, state.selected)}の結果をコピーしました` : 'コピーできませんでした');
 }
@@ -1063,6 +1500,7 @@ function init() {
   state.data = data;
   state.storageError = error;
   state.selected = data.periods.length - 1;
+  state.basis = data.settings.analysis.defaultBasis;
   renderForm();
   renderGlobalWarnings();
   renderInputWarnings();
