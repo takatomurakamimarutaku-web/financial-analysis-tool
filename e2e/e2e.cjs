@@ -152,7 +152,7 @@ async function shot(page, name) {
         await page.waitForTimeout(700);
         assert.match(await page.textContent('#report .report-cover'), /○○会計事務所.*山田 太郎/);
         assert.match(await page.textContent('#report .report-comment'), /売上高は増加傾向/);
-        assert.equal(await page.locator('#report .report-chart svg').count(), 7);
+        assert.equal(await page.locator('#report .report-chart svg').count(), 8);
         assert.equal(await page.evaluate(() => document.getElementById('report').classList.contains('page-numbers')), true);
         await shot(page, 'report-options');
         await page.uncheck('#reportCover');

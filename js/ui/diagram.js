@@ -3,8 +3,9 @@ import { calcAdjustedNetDebt, calcIndicators, calcNormalizedEbitda, isNum } from
 import {
   bsBoxes, buildBsBoxSvg, buildCccSvg, buildWaterfallSvg, cccParts, ebitdaSteps, netDebtSteps, plSteps,
 } from '../diagrams.js';
+import { RADAR_MAX, buildRadarSvg, radarScores } from '../radar.js';
 import { formatSigned } from './adjustments.js';
-import { $, currentPeriod, days, el, fa, fv, settings, state, unitName } from './core.js';
+import { $, currentPeriod, days, el, evaluation, fa, fv, settings, state, unitName } from './core.js';
 import { periodName, renderUnitLabels, selectPeriod } from './input.js';
 
 
@@ -41,6 +42,8 @@ export function renderDiagrams() {
     return (a?.label ?? '').trim() || d;
   };
   const u = unitName();
+
+  renderRadar();
 
   // 損益の滝グラフ
   const pl = p.pl;
@@ -81,6 +84,77 @@ export function renderDiagrams() {
   if (!isNum(nd.adjusted)) $('dgNdInsight').textContent = '有利子負債・現預金を入力すると表示します。';
   else if (nd.adjusted < 0) $('dgNdInsight').textContent = `手元資金が実質的な借入を ${amt(-nd.adjusted)}${u} 上回っています（ネットキャッシュ）。`;
   else $('dgNdInsight').textContent = `実質的な借入は ${amt(nd.adjusted)}${u} です。${nd.multiple.status === 'ok' ? `正常化EBITDAの ${fv(nd.multiple, '倍')} 分にあたり、何年分の稼ぎで返せるかの目安になります。` : ''}`;
+}
+
+// 点数の表示（小数第1位）
+export function scoreText(v) {
+  return isNum(v) ? `${(Math.round(v * 10) / 10).toFixed(1)}点` : '—';
+}
+
+// 選択中の期と前の期の点数（レーダーチャートとレポートで共通）
+export function radarData(data, index) {
+  const ev = evaluation();
+  const p = data.periods[index];
+  const current = radarScores(p, ev, { days: days() });
+  const prev = index > 0 ? radarScores(data.periods[index - 1], ev, { days: days() }) : null;
+  return { current, prev, prevName: index > 0 ? periodName(data.periods[index - 1], index - 1) : '' };
+}
+
+export function radarSvg(current, prev, prevName, curName) {
+  return buildRadarSvg({
+    labels: current.map((a) => `${a.label}${isNum(a.score) ? '' : '（—）'}`),
+    series: [
+      ...(prev ? [{ name: prevName, scores: prev.map((a) => a.score), kind: 'prev' }] : []),
+      { name: curName, scores: current.map((a) => a.score), kind: 'current' },
+    ],
+    title: `財務のバランス（${curName}）`,
+  });
+}
+
+export function radarTable(current, prev) {
+  const head = el('tr', {}, ['観点', '指標', '値', '点数', ...(prev ? ['前期'] : [])].map((t) => el('th', { scope: 'col', text: t })));
+  const rows = current.map((a, i) => {
+    const r = a.value;
+    const value = r?.status === 'ok' ? fv(r, a.rule?.unit ?? '') : (a.note || '—');
+    return el('tr', {}, [
+      el('th', { scope: 'row', text: a.label }),
+      el('td', { className: 'text', text: `${a.rule?.name ?? a.indicator}${a.fallback ? '※' : ''}` }),
+      el('td', { text: value }),
+      el('td', { text: scoreText(a.score) }),
+      ...(prev ? [el('td', { text: scoreText(prev[i].score) })] : []),
+    ]);
+  });
+  return el('table', { className: 'radar-table' }, [el('thead', {}, [head]), el('tbody', {}, rows)]);
+}
+
+export function radarInsight(current) {
+  const scored = current.filter((a) => isNum(a.score));
+  if (scored.length < 3) return '売上高・営業利益・総資産・純資産・流動資産・流動負債・有利子負債などを入力すると表示します。';
+  const sorted = [...scored].sort((a, b) => b.score - a.score);
+  const strong = sorted.filter((a) => a.score >= 4).map((a) => a.label);
+  const weak = sorted.filter((a) => a.score < 2).map((a) => a.label).reverse();
+  const avg = scored.reduce((s, a) => s + a.score, 0) / scored.length;
+  const parts = [`平均は ${scoreText(avg)}（${RADAR_MAX}点満点）です。`];
+  if (strong.length) parts.push(`${strong.join('・')}は良好の水準です。`);
+  if (weak.length) parts.push(`${weak.join('・')}は注意の水準を下回っています。`);
+  if (!strong.length && !weak.length) parts.push(`最も高いのは${sorted[0].label}、最も低いのは${sorted[sorted.length - 1].label}です。`);
+  return parts.join('');
+}
+
+export function renderRadar() {
+  const { current, prev, prevName } = radarData(state.data, state.selected);
+  const curName = periodName(currentPeriod(), state.selected);
+  setSvg('dgRadar', radarSvg(current, prev, prevName, curName));
+  $('dgRadarInsight').textContent = radarInsight(current);
+  $('dgRadarLegend').replaceChildren(
+    el('span', { className: 'radar-key radar-key-current', text: curName }),
+    ...(prev ? [el('span', { className: 'radar-key radar-key-prev', text: prevName })] : []),
+  );
+  const fallback = current.some((a) => a.fallback);
+  $('dgRadarTable').replaceChildren(
+    radarTable(current, prev),
+    ...(fallback ? [el('p', { className: 'note', text: '※選んでいる評価基準に境界がない指標は「標準」の境界で点数にしています。' })] : []),
+  );
 }
 
 export function diffOrNull(a, b) {

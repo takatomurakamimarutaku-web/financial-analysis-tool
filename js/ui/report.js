@@ -16,6 +16,7 @@ import { renderCompanyBar } from './companies.js';
 import {
   $, cancelPendingSave, days, el, evaluation, fa, fmt, formatDateTime, fv, saveNow, scheduleSave, setWorkspace, settings, showToast, state, unitName,
 } from './core.js';
+import { radarData, radarSvg } from './diagram.js';
 import { periodName, renderForm, renderInputResults, renderInputWarnings } from './input.js';
 import { pctText, renderNetDebtSummary } from './netdebt.js';
 
@@ -168,6 +169,11 @@ function reportCharts(data, labels) {
     const a = [...settings().accounts.pl, ...settings().accounts.bs].find((x) => x.key === k);
     return (a?.label ?? '').trim() || d;
   };
+  const radar = radarData(data, last);
+  const lastName = labels[last] || `第${last + 1}期`;
+  const radarBox = el('div', { className: 'report-chart' }, [el('h3', { text: `財務のバランス（${lastName}${radar.prev ? `、点線は${radar.prevName}` : ''}・5点満点）` })]);
+  // svg は radar.js で全テキストをエスケープ済み
+  radarBox.insertAdjacentHTML('beforeend', radarSvg(radar.current, radar.prev, radar.prevName, lastName));
   const diagrams = [
     buildWaterfallSvg({ steps: plSteps(p.pl, label), format: (v, b) => (b.kind === 'delta' ? formatSigned(v, 'report') : amt(v)), title: '損益の滝グラフ' }),
     buildBsBoxSvg({ boxes: bsBoxes(p.bs), format: amt, label }),
@@ -179,7 +185,7 @@ function reportCharts(data, labels) {
   });
   return el('section', { className: 'report-charts-section' }, [
     el('h2', { text: 'グラフ・図解' }),
-    el('div', { className: 'report-charts' }, [...charts, ...diagrams]),
+    el('div', { className: 'report-charts' }, [...charts, radarBox, ...diagrams]),
   ]);
 }
 

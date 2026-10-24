@@ -15,6 +15,7 @@ export const SECTION_NAV = {
   ],
   diagram: [
     ['sec-dg-period', '期'],
+    ['sec-dg-radar', 'バランス'],
     ['sec-dg-pl', '損益'],
     ['sec-dg-bs', '財産と集め方'],
     ['sec-dg-ccc', 'お金の回収'],
