@@ -15,6 +15,13 @@
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png">
   <link rel="stylesheet" href="css/style.css">
+  <script>
+    // 表示テーマ（設定）を描画前に反映して、ちらつきを防ぐ。値は js/ui.js が保存する
+    try {
+      var t = localStorage.getItem('finAnalysisTool.theme');
+      if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+    } catch (e) { /* 保存領域が使えない環境では端末の設定に従う */ }
+  </script>
 </head>
 <body>
   <header class="app-header">
@@ -37,6 +44,11 @@
 
     <!-- 入力タブ -->
     <div id="view-input" role="tabpanel" aria-labelledby="tab-input">
+      <section id="sec-summary" class="panel summary" aria-label="サマリー">
+        <h2 class="panel-title">サマリー（<span id="summaryPeriodName"></span>）</h2>
+        <div id="summaryGrid" class="summary-grid"></div>
+      </section>
+
       <section id="sec-basic" class="panel" aria-label="基本情報">
         <label class="field">
           <span class="field-label">会社名</span>

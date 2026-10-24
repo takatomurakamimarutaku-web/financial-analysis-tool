@@ -4,7 +4,7 @@ import { PL_FIELDS, BS_FIELDS, MAX_PERIODS, ADJUSTMENT_CATEGORIES, isNum } from 
 import { createDefaultSettings, normalizeSettings, applyAccountTotals } from './settings.js';
 
 export const STORAGE_KEY = 'finAnalysisTool.data';
-export const CURRENT_VERSION = 5;
+export const CURRENT_VERSION = 6;
 
 function defaultStorage() {
   try {
@@ -225,8 +225,15 @@ export function migrate(raw) {
   if (data.version === 2) data = migrateV2toV3(data);
   if (data.version === 3) data = migrateV3toV4(data);
   if (data.version === 4) data = migrateV4toV5(data);
+  if (data.version === 5) data = migrateV5toV6(data);
   if (data.version === CURRENT_VERSION) return data;
   return null;
+}
+
+// version 5 → 6：設定に表示テーマ（theme）とマイナスの表示方法（negativeStyle）を追加する（既定は従来どおり）
+export function migrateV5toV6(v5) {
+  const settings = isPlainObject(v5.settings) ? v5.settings : {};
+  return { ...v5, version: 6, settings: normalizeSettings({ ...settings, theme: 'auto', negativeStyle: 'minus' }) };
 }
 
 // version 4 → 5：金額の単位を全体で1つ（settings.unit）から区分ごと（settings.units）に変更する。
@@ -360,7 +367,7 @@ export const BACKUP_FORMAT_VERSION = 1;
 export const LAST_BACKUP_KEY = 'finAnalysisTool.lastBackupAt';
 export const BACKUP_REMINDER_DAYS = 30;
 
-const SUPPORTED_DATA_VERSIONS = [1, 2, 3, 4, 5];
+const SUPPORTED_DATA_VERSIONS = [1, 2, 3, 4, 5, 6];
 
 export function createBackup(data, now = new Date()) {
   return {

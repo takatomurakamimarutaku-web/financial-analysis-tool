@@ -26,6 +26,16 @@ function unitsAll(unit) {
   return Object.fromEntries(SCOPE_IDS.map((k) => [k, unit]));
 }
 
+export const THEMES = [
+  { id: 'auto', name: '端末の設定に合わせる' },
+  { id: 'light', name: 'ライト' },
+  { id: 'dark', name: 'ダーク' },
+];
+export const NEGATIVE_STYLES = [
+  { id: 'minus', name: '−1,000（マイナス記号）' },
+  { id: 'triangle', name: '△1,000（会計ソフトの表記）' },
+];
+
 export const DIGIT_LIMITS = { pct: [0, 3], days: [0, 2], times: [0, 3] };
 export const BACKUP_REMINDER_CHOICES = [0, 7, 14, 30, 60, 90]; // 0 = 案内しない
 
@@ -68,6 +78,8 @@ export function createDefaultSettings() {
     digits: { pct: 1, days: 1, times: 2 },
     backupReminderDays: 30,
     adjustmentCategoryNames: {},
+    theme: 'auto',
+    negativeStyle: 'minus',
   };
 }
 
@@ -145,6 +157,8 @@ export function normalizeSettings(raw) {
     },
     backupReminderDays: clampInt(raw.backupReminderDays, [0, 365], d.backupReminderDays),
     adjustmentCategoryNames: names,
+    theme: THEMES.some((t) => t.id === raw.theme) ? raw.theme : d.theme,
+    negativeStyle: NEGATIVE_STYLES.some((t) => t.id === raw.negativeStyle) ? raw.negativeStyle : d.negativeStyle,
   };
 }
 
@@ -192,6 +206,7 @@ export function formatOptions(settings, scope) {
     amountUnit: u.name,
     amountDigits: u.digits,
     digits: { '%': s.digits?.pct ?? 1, '日': s.digits?.days ?? 1, '倍': s.digits?.times ?? 2, '回': s.digits?.times ?? 2 },
+    negativeStyle: s.negativeStyle === 'triangle' ? 'triangle' : 'minus',
   };
 }
 

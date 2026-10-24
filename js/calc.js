@@ -315,9 +315,14 @@ export function checkBalance(bs = {}) {
   };
 }
 
-// opts は formatAmount と同じ表示オプション（金額の単位）
-export function getWarnings(period, opts) {
-  const { bs } = toCtx(period);
+// PL の整合チェック。営業利益 −（売上高 − 売上原価 − 販管費）。いずれかが未入力なら null（判定しない）
+export function checkPl(pl = {}) {
+  return { operatingDiff: diff(pl.operatingIncome, diff(diff(pl.sales, pl.costOfSales), pl.sga)) };
+}
+
+// opts は formatAmount と同じ表示オプション（BS の金額の単位）。plOpts は PL の警告用（省略時は opts）
+export function getWarnings(period, opts, plOpts = opts) {
+  const { pl, bs } = toCtx(period);
   const unit = opts?.amountUnit ?? '千円';
   const warnings = [];
   const { assetsDiff, liabEquityDiff } = checkBalance(bs);
@@ -331,6 +336,13 @@ export function getWarnings(period, opts) {
     warnings.push({
       type: 'liabEquityMismatch',
       message: `総資産と「流動負債＋固定負債＋純資産」が一致しません（差額 ${formatAmount(liabEquityDiff, opts)}${unit}）`,
+    });
+  }
+  const { operatingDiff } = checkPl(pl);
+  if (isNum(operatingDiff) && Math.abs(operatingDiff) >= BALANCE_TOLERANCE) {
+    warnings.push({
+      type: 'plMismatch',
+      message: `営業利益が「売上高−売上原価−販管費」と一致しません（差額 ${formatAmount(operatingDiff, plOpts)}${plOpts?.amountUnit ?? '千円'}）`,
     });
   }
   if (isInsolvent(bs)) {
@@ -359,19 +371,24 @@ export function formatNumber(v, digits) {
   return n.toLocaleString('ja-JP', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
+// opts.negativeStyle = 'triangle' のとき、マイナスを「△」で表示する（会計ソフトの表記）
+export function negativeMark(text, opts) {
+  return opts?.negativeStyle === 'triangle' ? text.replace(/^-/, '△') : text;
+}
+
 // 金額（内部は千円）を表示単位に換算して整形する
 export function formatAmount(v, opts) {
   if (!isNum(v)) return '—';
-  return formatNumber(v * (opts?.amountScale ?? 1), opts?.amountDigits ?? 0);
+  return negativeMark(formatNumber(v * (opts?.amountScale ?? 1), opts?.amountDigits ?? 0), opts);
 }
 
 // 表示用の整形。result は calcIndicators の各要素
 export function formatValue(result, unit, opts) {
   if (!result || result.status === 'notApplicable') return result ? '参考外' : '—';
   if (result.status !== 'ok' || !isNum(result.value)) return '—';
-  if (unit === '%') return `${formatNumber(result.value * 100, digitsFor('%', opts))}%`;
+  if (unit === '%') return `${negativeMark(formatNumber(result.value * 100, digitsFor('%', opts)), opts)}%`;
   if (unit === '千円') return `${formatAmount(result.value, opts)}${opts?.amountUnit ?? '千円'}`;
-  return `${formatNumber(result.value, digitsFor(unit, opts))}${unit}`;
+  return `${negativeMark(formatNumber(result.value, digitsFor(unit, opts)), opts)}${unit}`;
 }
 
 // 「結果をテキストでコピー」用の本文（periodIndex の期。既定は先頭の期）
@@ -451,15 +468,15 @@ function signed(text, v) {
 export function formatChangeAmount(change, unit, opts) {
   if (!change || !isNum(change.amount)) return '—';
   const v = change.amount;
-  if (unit === '%') return `${signed(formatNumber(v * 100, digitsFor('%', opts)), v)}pt`;
+  if (unit === '%') return `${signed(negativeMark(formatNumber(v * 100, digitsFor('%', opts)), opts), v)}pt`;
   if (unit === '千円') return `${signed(formatAmount(v, opts), v)}${opts?.amountUnit ?? '千円'}`;
-  return `${signed(formatNumber(v, digitsFor(unit, opts)), v)}${unit}`;
+  return `${signed(negativeMark(formatNumber(v, digitsFor(unit, opts)), opts), v)}${unit}`;
 }
 
 export function formatChangeRate(change, opts) {
   if (!change || change.rateStatus === 'na') return '—';
   if (change.rateStatus === 'notApplicable') return '参考外';
-  return `${signed(formatNumber(change.rate * 100, digitsFor('%', opts)), change.rate)}%`;
+  return `${signed(negativeMark(formatNumber(change.rate * 100, digitsFor('%', opts)), opts), change.rate)}%`;
 }
 
 function amountResult(v) {

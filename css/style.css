@@ -1,4 +1,5 @@
 :root {
+  color-scheme: light;
   --bg: #f4f5f7;
   --surface: #ffffff;
   --text: #1c2430;
@@ -16,8 +17,9 @@
   --radius: 10px;
 }
 
+/* ダーク：端末がダークモードで、設定が「ライト」でないとき、または設定が「ダーク」のとき */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #12161c;
     --surface: #1c222b;
     --text: #e6e9ee;
@@ -31,7 +33,24 @@
     --error-bg: #3b1d1b;
     --error-border: #7a3a35;
     --na: #7d8796;
+    color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+  --bg: #12161c;
+  --surface: #1c222b;
+  --text: #e6e9ee;
+  --muted: #9aa5b4;
+  --border: #2f3843;
+  --primary: #4d8ef0;
+  --danger: #f2756a;
+  --warn-bg: #3a2c12;
+  --warn-border: #8a6420;
+  --warn-text: #f5d39a;
+  --error-bg: #3b1d1b;
+  --error-border: #7a3a35;
+  --na: #7d8796;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -589,8 +608,9 @@ input[type="text"]:focus { outline: 2px solid var(--primary); outline-offset: -1
   --radius: 6px;
   --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .04);
 }
+/* ダーク：端末がダークモードで、設定が「ライト」でないとき、または設定が「ダーク」のとき */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0f141b;
     --surface: #18202a;
     --text: #e4e8ee;
@@ -607,7 +627,27 @@ input[type="text"]:focus { outline: 2px solid var(--primary); outline-offset: -1
     --header-text: #eef3fa;
     --header-muted: #9fb2cc;
     --shadow: none;
+    color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141b;
+  --surface: #18202a;
+  --text: #e4e8ee;
+  --muted: #97a3b3;
+  --border: #2b3543;
+  --primary: #5b9bef;
+  --primary-strong: #7bb0f5;
+  --primary-soft: #1a2b42;
+  --accent: #2bb3a6;
+  --head-bg: #1e2834;
+  --row-alt: #1b2430;
+  --header-bg: #0a1626;
+  --header-bg2: #10284a;
+  --header-text: #eef3fa;
+  --header-muted: #9fb2cc;
+  --shadow: none;
+  color-scheme: dark;
 }
 
 body {
@@ -692,3 +732,15 @@ input[type="text"][aria-invalid="true"] { border-color: var(--danger); }
 
 /* レポート（印刷）の見出し色もテーマに合わせる */
 .report h2 { border-bottom-color: #12509b; color: #12509b; }
+
+/* ---- 入力タブ先頭のサマリー ---- */
+.summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.kpi { background: var(--head-bg); border-radius: var(--radius); padding: 10px; min-width: 0; }
+.kpi-label { display: block; font-size: 12px; color: var(--muted); }
+.kpi-value { display: block; font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.3; overflow-wrap: anywhere; }
+.kpi-value.na { color: var(--na); font-weight: 400; }
+.kpi-value.negative { color: var(--danger); }
+.kpi-sub { display: block; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.kpi-sub .up { color: var(--accent); }
+.kpi-sub .down { color: var(--danger); }
+@media (min-width: 600px) { .summary-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }

@@ -1,7 +1,7 @@
 // 画面描画とイベント処理
 import {
   CATEGORIES, INDICATORS, MAX_PERIODS, CHART_ROWS,
-  calcIndicators, getWarnings, formatValue, buildResultText, parseAmount, isNum,
+  calcIndicators, getWarnings, formatValue, buildResultText, parseAmount, isNum, negativeMark,
   buildComparison, formatChangeAmount, formatChangeRate, formulaText, daysInYearOf,
   ADJUSTMENT_CATEGORIES, calcNormalizedEbitda, getAdjustmentWarnings, buildEbitdaBridge, formatAmount,
   DEBT_LIKE_EXAMPLES, CASH_LIKE_EXAMPLES, calcWorkingCapital, calcWorkingCapitalSeries,
@@ -21,7 +21,7 @@ import {
   registerServiceWorker, requestPersistentStorage, checkForUpdate, isStoragePersisted, APP_VERSION,
 } from './pwa.js';
 import {
-  AMOUNT_UNITS, UNIT_SCOPES, commonUnit, setUnit, BACKUP_REMINDER_CHOICES, DIGIT_LIMITS, createDefaultSettings, unitOf, toDisplayAmount, fromDisplayAmount,
+  AMOUNT_UNITS, UNIT_SCOPES, commonUnit, setUnit, THEMES, NEGATIVE_STYLES, BACKUP_REMINDER_CHOICES, DIGIT_LIMITS, createDefaultSettings, unitOf, toDisplayAmount, fromDisplayAmount,
   formatOptions, accountLabel, accountTree, renameAccount, setAccountHidden, moveAccount, addCustomAccount,
   removeCustomAccount, applyAccountTotalsToPeriod, isComputedAccount, indicatorList, setIndicatorHidden, moveIndicator,
   arrangeComparisonRows, rowLabel, categoryLabel, renameCategory, updateSettings, OTHER_DETAIL_LABEL, MAX_CUSTOM_ACCOUNTS,
@@ -85,11 +85,68 @@ function fv(result, unit, scope) {
   return formatValue(result, unit, fmt(scope));
 }
 
-// 入力欄の表示用（内部値は千円。区分の単位に換算し、丸めずにカンマ区切り）
+// 入力欄の表示用（内部値は千円。区分の単位に換算し、丸めずにカンマ区切り。マイナスの表記は設定に従う）
 function formatInput(v, scope) {
   const d = toDisplayAmount(v, settings(), scope);
   if (!isNum(d)) return '';
-  return d.toLocaleString('ja-JP', { maximumFractionDigits: 10 });
+  return negativeMark(d.toLocaleString('ja-JP', { maximumFractionDigits: 10 }), fmt(scope));
+}
+
+// ---- 表示テーマ ----
+
+const THEME_KEY = 'finAnalysisTool.theme';
+
+// 設定のテーマを画面に反映し、次回の起動時に描画前に読めるよう保存する（index.html の先頭で読む）
+function applyTheme() {
+  const t = settings().theme;
+  if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+  else document.documentElement.removeAttribute('data-theme');
+  try {
+    localStorage.setItem(THEME_KEY, t);
+  } catch {
+    // 保存できなくても表示には影響しない
+  }
+}
+
+// ---- サマリー（入力タブ先頭） ----
+
+const SUMMARY_ROWS = ['sales', 'operatingIncome', 'ebitda', 'equityRatio'];
+
+function renderSummary() {
+  $('summaryPeriodName').textContent = periodName(currentPeriod(), state.selected);
+  const cmp = buildComparison(state.data, 'end');
+  const i = state.selected;
+  const find = (id) => cmp.rows.find((r) => r.id === id);
+  // 正常化の調整がある期は、EBITDA の代わりに正常化EBITDA を表示する
+  const useNormalized = (currentPeriod().adjustments ?? []).length > 0;
+  const ids = SUMMARY_ROWS.map((id) => (id === 'ebitda' && useNormalized ? 'normalizedEbitda' : id));
+  const tiles = ids.map((id) => {
+    const row = find(id);
+    const cell = row.cells[i];
+    const r = cell.result;
+    const isAmount = row.unit === '千円';
+    const value = isAmount ? (isNum(r.value) ? `${fa(r.value)}${unitName()}` : '—') : fv(r, row.unit);
+    const subs = [];
+    if (id === 'operatingIncome') {
+      const m = find('operatingMargin').cells[i].result;
+      subs.push(el('span', { text: `営業利益率 ${fv(m, '%')}` }));
+    }
+    if (cell.change && cell.change.rateStatus !== undefined && i > 0) {
+      const ch = cell.change;
+      const text = row.unit === '%' ? formatChangeAmount(ch, '%', fmt()) : formatChangeRate(ch, fmt());
+      const dir = isNum(ch.amount) ? (ch.amount > 0 ? 'up' : ch.amount < 0 ? 'down' : '') : '';
+      if (text !== '—') subs.push(el('span', {}, ['前期比 ', el('span', { className: dir, text })]));
+    }
+    const cls = ['kpi-value'];
+    if (r.status !== 'ok') cls.push('na');
+    else if (r.value < 0) cls.push('negative');
+    return el('div', { className: 'kpi' }, [
+      el('span', { className: 'kpi-label', text: rowLabel(settings(), row) }),
+      el('span', { className: cls.join(' '), text: value }),
+      ...subs.map((x) => el('span', { className: 'kpi-sub' }, [x])),
+    ]);
+  });
+  $('summaryGrid').replaceChildren(...tiles);
 }
 
 // 区分の単位で入力された文字列 → 内部値（千円）。解釈できなければ null
@@ -241,6 +298,7 @@ function renderPeriodBar() {
 }
 
 function renderForm() {
+  applyTheme();
   $('companyName').value = state.data.companyName;
   renderPeriodBar();
   renderAmountFields('plFields', 'pl');
@@ -282,6 +340,8 @@ function toggleSign(section, key, input) {
 function selectPeriod(i) {
   state.selected = i;
   renderForm();
+  renderSummary();
+  renderInputWarnings();
   renderInputResults();
 }
 
@@ -315,7 +375,7 @@ function onMovePeriod(delta) {
 function renderInputWarnings() {
   const box = $('warnings');
   box.replaceChildren();
-  for (const w of getWarnings(currentPeriod(), fmt('bs'))) {
+  for (const w of getWarnings(currentPeriod(), fmt('bs'), fmt('pl'))) {
     box.append(el('div', { className: 'warning', text: w.message }));
   }
 }
@@ -825,7 +885,7 @@ function renderReport() {
   // 警告・注記
   const warnings = [];
   data.periods.forEach((p, i) => {
-    for (const w of [...getWarnings(p, fmt('report')), ...getAdjustmentWarnings(p), ...getNetDebtItemWarnings(p)]) warnings.push(`${labels[i]}：${w.message}`);
+    for (const w of [...getWarnings(p, fmt('report'), fmt('report')), ...getAdjustmentWarnings(p), ...getNetDebtItemWarnings(p)]) warnings.push(`${labels[i]}：${w.message}`);
   });
   const notes = [
     `金額単位は${unitName('report')}。計算は入力値をそのまま用い、表示時のみ丸めています。`,
@@ -955,6 +1015,7 @@ function renderCharts(cmp) {
 
 const SECTION_NAV = {
   input: [
+    ['sec-summary', 'サマリー'],
     ['sec-basic', '基本情報'],
     ['sec-pl', 'PL入力'],
     ['sec-bs', 'BS入力'],
@@ -1026,6 +1087,7 @@ const SETTINGS_PAGES = [
   { id: 'bs', title: 'BS科目', summary: () => accountSummary('bs') },
   { id: 'indicators', title: '指標の表示・並び順', summary: () => `${INDICATORS.length}件中${indicatorList(settings()).length}件を表示` },
   { id: 'analysis', title: '分析の基本設定', summary: () => `1年＝${days()}日・比較の初期値：${settings().analysis.defaultBasis === 'average' ? '平均残高' : '期末残高'}` },
+  { id: 'display', title: '画面の表示', summary: () => `テーマ：${THEMES.find((t) => t.id === settings().theme).name}・マイナス：${settings().negativeStyle === 'triangle' ? '△' : '−'}` },
   { id: 'digits', title: '表示桁数', summary: () => `%：${settings().digits.pct}桁・日：${settings().digits.days}桁・倍/回：${settings().digits.times}桁` },
   { id: 'categories', title: '正常化EBITDAの調整区分', summary: () => `${Object.keys(settings().adjustmentCategoryNames).length}件を名称変更` },
   { id: 'data', title: 'バックアップ・データ管理', summary: () => (settings().backupReminderDays ? `${settings().backupReminderDays}日ごとに案内` : 'バックアップの案内なし') },
@@ -1341,7 +1403,22 @@ function renderAboutPage(panel) {
   );
 }
 
+function renderDisplayPage(panel) {
+  panel.append(
+    el('h3', { className: 'sub-title', text: '表示テーマ' }),
+    radioGroup('theme', THEMES.map((t) => ({
+      value: t.id, label: t.name,
+      note: t.id === 'auto' ? 'iPhone の「ライト／ダーク」の設定に合わせて自動で切り替えます' : '',
+    })), settings().theme, (v) => changeSettings(updateSettings(state.data, { theme: v }))),
+    el('h3', { className: 'sub-title', text: 'マイナスの表示' }),
+    el('p', { className: 'note', text: '画面・レポートの表示に使います。入力欄でも△で表示し、△・▲・− のどれで入力しても負の数として扱います。CSV は数値（-1000）のまま出力します。' }),
+    radioGroup('negative', NEGATIVE_STYLES.map((t) => ({ value: t.id, label: t.name })), settings().negativeStyle,
+      (v) => changeSettings(updateSettings(state.data, { negativeStyle: v }))),
+  );
+}
+
 const SETTINGS_RENDERERS = {
+  display: renderDisplayPage,
   unit: renderUnitPage,
   pl: (panel) => renderAccountsPage('pl', panel),
   bs: (panel) => renderAccountsPage('bs', panel),
@@ -1375,6 +1452,7 @@ function setView(view) {
 }
 
 function update() {
+  renderSummary();
   renderInputWarnings();
   renderInputResults();
   renderAdjustmentSummary();
@@ -1504,7 +1582,7 @@ async function copyText(text) {
 async function onCopy() {
   const p = currentPeriod();
   const opts = { ...fmt(), indicators: indicatorList(settings()) };
-  const text = buildResultText(state.data, calcIndicators(p, { days: days() }), getWarnings(p, fmt()), state.selected, opts);
+  const text = buildResultText(state.data, calcIndicators(p, { days: days() }), getWarnings(p, fmt('bs'), fmt('pl')), state.selected, opts);
   const ok = await copyText(text);
   showToast(ok ? `${periodName(p, state.selected)}の結果をコピーしました` : 'コピーできませんでした');
 }
@@ -1526,6 +1604,7 @@ function init() {
   state.basis = data.settings.analysis.defaultBasis;
   renderForm();
   renderGlobalWarnings();
+  renderSummary();
   renderInputWarnings();
   renderInputResults();
   renderBackupStatus();
