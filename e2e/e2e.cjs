@@ -169,6 +169,28 @@ async function shot(page, name) {
       await page.click('#tab-input');
     });
 
+    await step(`キーボード：タブと期の選択を矢印キーで切り替えられる${S}`, async () => {
+      await page.click('#tab-input');
+      await page.focus('#tab-input');
+      await page.keyboard.press('ArrowRight');
+      assert.equal(await page.getAttribute('#tab-compare', 'aria-selected'), 'true');
+      assert.equal(await page.evaluate(() => document.activeElement.id), 'tab-compare');
+      await page.keyboard.press('End');
+      assert.equal(await page.getAttribute('#tab-settings', 'aria-selected'), 'true');
+      await page.keyboard.press('Home');
+      assert.equal(await page.getAttribute('#tab-input', 'aria-selected'), 'true');
+      assert.deepEqual(await page.$$eval('.tabs [role="tab"]', (ts) => ts.map((t) => t.tabIndex)), [0, -1, -1, -1]);
+      const chips = '#periodChips .chip:not(.chip-add)';
+      await page.click(`${chips} >> nth=0`);
+      await page.focus(`${chips} >> nth=0`);
+      await page.keyboard.press('ArrowRight');
+      assert.equal(await page.getAttribute(`${chips} >> nth=1`, 'aria-selected'), 'true');
+      assert.equal(await page.evaluate(() => document.activeElement.getAttribute('aria-selected')), 'true');
+      const badge = await page.$('.badge-good');
+      if (badge) assert.equal(await badge.evaluate((b) => getComputedStyle(b, '::before').content), '"✓ "');
+      await page.click(`${chips} >> nth=2`);
+    });
+
     if (scheme === 'light') {
       await step('レポート：作成者・所見・表紙・グラフ・ページ番号の設定が反映・保存される', async () => {
         await page.click('#tab-compare');

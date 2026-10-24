@@ -17,6 +17,7 @@ import {
   renderMissingFields, renderSummary,
 } from './input.js';
 import { renderSectionNav, updateNavHeight } from './nav.js';
+import { initKeyboardNavigation } from './a11y.js';
 import { renderCashFlowInput } from './cashflow.js';
 import { LINE_LISTS, onAddLineItem, renderNetDebtSummary } from './netdebt.js';
 import { exportCsv, onDeleteAll, renderReport, renderReportOptions } from './report.js';
@@ -101,6 +102,7 @@ export function init() {
   $('btnSample').addEventListener('click', onLoadSample);
   $('btnCopyPrev').addEventListener('click', onCopyPrevious);
   attachLiveGrouping();
+  initKeyboardNavigation();
   $('btnCsvImport').addEventListener('click', onCsvImportClick);
   $('csvFile').addEventListener('change', onCsvFile);
   $('btnClear').addEventListener('click', onClear);

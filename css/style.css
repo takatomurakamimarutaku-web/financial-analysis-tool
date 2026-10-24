@@ -13,7 +13,7 @@
   --warn-text: #7a4a00;
   --error-bg: #fdecea;
   --error-border: #e8a39d;
-  --na: #8a94a3;
+  --na: #5f6a7a;
   --good-bg: #e3f4ea;
   --good-text: #13653a;
   --caution-bg: #fdeedd;
@@ -638,6 +638,7 @@ input[type="text"]:focus { outline: 2px solid var(--primary); outline-offset: -1
     --header-bg2: #10284a;
     --header-text: #eef3fa;
     --header-muted: #9fb2cc;
+    --primary-text: #0b1a2e;
     --shadow: none;
     color-scheme: dark;
   }
@@ -660,6 +661,7 @@ input[type="text"]:focus { outline: 2px solid var(--primary); outline-offset: -1
   --header-muted: #9fb2cc;
   --shadow: none;
   color-scheme: dark;
+  --primary-text: #0b1a2e;
 }
 
 body {
@@ -775,18 +777,18 @@ input[type="text"][aria-invalid="true"] { border-color: var(--danger); }
 .wf-link { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 2 2; }
 .bs-head { fill: var(--muted); font-size: 11px; font-weight: 600; }
 .bs-box { stroke: var(--surface); stroke-width: 1.5; }
-.bs-currentAssets { fill: #5b8fd6; }
+.bs-currentAssets { fill: #3d72c0; }
 .bs-fixedAssets { fill: #2f5fa8; }
-.bs-currentLiabilities { fill: #e0a458; }
-.bs-fixedLiabilities { fill: #c27c2c; }
-.bs-netAssets { fill: #1f8f84; }
+.bs-currentLiabilities { fill: #a86414; }
+.bs-fixedLiabilities { fill: #7d4a10; }
+.bs-netAssets { fill: #17766d; }
 .bs-deficit { fill: #c2413a; }
 .bs-label { fill: #ffffff; font-size: 12px; font-weight: 700; }
 .bs-label-small { font-size: 10px; }
 .bs-value { fill: #ffffff; font-size: 10.5px; font-variant-numeric: tabular-nums; }
-.ccc-inv { fill: #7aa6e0; }
+.ccc-inv { fill: #3d72c0; }
 .ccc-rec { fill: var(--primary); }
-.ccc-pay { fill: #e0a458; }
+.ccc-pay { fill: #a86414; }
 .ccc-gap { fill: var(--danger); }
 .ccc-text { fill: #ffffff; font-size: 10.5px; font-weight: 600; }
 .ccc-note { fill: var(--accent); font-size: 11.5px; font-weight: 600; }
@@ -1112,3 +1114,8 @@ body.reporting .company-bar { display: none; }
 .cf-key.bar-inv::before { background: #e0a458; }
 .cf-key.bar-fin::before { background: #8a94a3; }
 .cf-key.bar-fcf::before { background: var(--accent, #0f766e); }
+
+/* ---- アクセシビリティ：色だけに頼らない評価バッジ（記号を併記）・キーボード操作のフォーカス表示 ---- */
+.badge-good::before, .report-badge.badge-good::before { content: '✓ '; }
+.badge-caution::before, .report-badge.badge-caution::before { content: '! '; font-weight: 700; }
+:where(button, a, input, select, textarea, summary, [tabindex]):focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
