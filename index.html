@@ -124,6 +124,11 @@
             <button type="button" id="btnRemovePeriod" class="btn btn-danger">期を削除</button>
           </div>
         </div>
+        <div class="csv-import">
+          <button type="button" id="btnCsvImport" class="btn">試算表CSVを取り込む</button>
+          <span class="note">選択中の期に、科目名と金額のCSVから入力します</span>
+          <input type="file" id="csvFile" accept=".csv,.txt,.tsv,text/csv,text/plain" hidden>
+        </div>
 
         <div class="actions">
           <button type="button" id="btnSample" class="btn">サンプルデータ読込</button>

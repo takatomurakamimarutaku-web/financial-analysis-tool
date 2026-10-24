@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  WORKSPACE_VERSION, MAX_COMPANIES, migrateV7toV8, createWorkspace, normalizeWorkspace, toWorkspace, validateWorkspace,
+  WORKSPACE_VERSION, MAX_COMPANIES, migrateV7toV8, migrateV8toV9, createWorkspace, normalizeWorkspace, toWorkspace, validateWorkspace,
   activeData, withActiveData, addCompany, duplicateCompany, renameCompany, removeCompany, moveCompany, setActiveCompany,
   companyLabel, loadWorkspace, saveWorkspace, parseAnyBackup, createUndoSnapshot, saveUndo, loadUndo, clearUndo,
 } from '../js/workspace.js';
@@ -24,7 +24,7 @@ describe('データ移行 version 7 → 8（複数社）', () => {
   test('v7 のデータはそのまま1社目になり、金額・設定・計算結果は変わらない', () => {
     const v7 = getSampleMultiData();
     const ws = migrateV7toV8(v7);
-    assert.equal(ws.version, WORKSPACE_VERSION);
+    assert.equal(ws.version, 8);
     assert.equal(ws.companies.length, 1);
     assert.equal(ws.activeId, ws.companies[0].id);
     const d = activeData(ws);
@@ -38,7 +38,7 @@ describe('データ移行 version 7 → 8（複数社）', () => {
     assert.equal(error, null);
     assert.equal(workspace.companies[0].companyName, 'サンプル株式会社');
     assert.equal(saveWorkspace(workspace, st).ok, true);
-    assert.equal(JSON.parse(st.getItem(STORAGE_KEY)).version, 8);
+    assert.equal(JSON.parse(st.getItem(STORAGE_KEY)).version, WORKSPACE_VERSION);
     assert.deepEqual(loadWorkspace(st).workspace, workspace);
   });
   test('v1 など古い形式からも移行できる。壊れたデータはエラー', () => {
@@ -48,6 +48,34 @@ describe('データ移行 version 7 → 8（複数社）', () => {
     st.setItem(STORAGE_KEY, '{x');
     assert.match(loadWorkspace(st).error, /壊れている/);
     assert.equal(loadWorkspace(null).error, 'この環境ではデータを保存できません');
+  });
+});
+
+describe('データ移行 version 8 → 9（CSV取込の対応表）', () => {
+  test('v8 には空の対応表が加わり、会社・設定は変わらない', () => {
+    const v8 = migrateV7toV8(getSampleMultiData());
+    const v9 = migrateV8toV9(v8);
+    assert.equal(v9.version, 9);
+    assert.deepEqual(v9.importMap, {});
+    assert.deepEqual(v9.companies, v8.companies);
+    assert.deepEqual(v9.settings, v8.settings);
+    assert.equal(migrateV8toV9(v9), v9);
+  });
+  test('保存済みの v8 を読み込むと v9 になる。対応表の不正な値は除く', () => {
+    const st = memoryStorage();
+    const v8 = migrateV7toV8(getSampleMultiData());
+    st.setItem(STORAGE_KEY, JSON.stringify(v8));
+    const { workspace } = loadWorkspace(st);
+    assert.equal(workspace.version, WORKSPACE_VERSION);
+    assert.deepEqual(workspace.importMap, {});
+    assert.deepEqual(workspace.companies, v8.companies);
+    const ws = normalizeWorkspace({ ...workspace, importMap: { 売上高: 'pl.sales', 雑収入: 'ignore', x: 'pl.nope', y: 3 } });
+    assert.deepEqual(ws.importMap, { 売上高: 'pl.sales', 雑収入: 'ignore' });
+  });
+  test('v8 の全社バックアップも読める', () => {
+    const r = parseAnyBackup(backupToJson(migrateV7toV8(getSampleMultiData())));
+    assert.equal(r.kind, 'workspace');
+    assert.equal(r.workspace.version, 9);
   });
 });
 
@@ -118,7 +146,7 @@ describe('バックアップ（1社分・全社）', () => {
     assert.deepEqual(r.data, getSampleMultiData());
   });
   test('全社のバックアップは往復できる', () => {
-    const ws = renameCompany(addCompany(migrateV7toV8(getSampleMultiData())), 'dummy', 'x');
+    const ws = renameCompany(addCompany(toWorkspace(getSampleMultiData())), 'dummy', 'x');
     const r = parseAnyBackup(backupToJson(ws));
     assert.equal(r.kind, 'workspace');
     assert.deepEqual(r.workspace, ws);
@@ -138,7 +166,7 @@ describe('バックアップ（1社分・全社）', () => {
 describe('元に戻す（直前の全社の状態の退避）', () => {
   test('退避して読み戻すと同じ状態・期・操作名になる', () => {
     const st = memoryStorage();
-    const ws = addCompany(migrateV7toV8(getSampleMultiData()));
+    const ws = addCompany(toWorkspace(getSampleMultiData()));
     assert.equal(saveUndo(createUndoSnapshot(ws, 'removeCompany', 0, new Date('2026-10-24T00:00:00Z')), st), true);
     const u = loadUndo(st);
     assert.deepEqual(u.workspace, ws);

@@ -19,6 +19,7 @@ import { renderSectionNav, updateNavHeight } from './nav.js';
 import { LINE_LISTS, onAddLineItem, renderNetDebtSummary } from './netdebt.js';
 import { exportCsv, onDeleteAll, renderReport } from './report.js';
 import { renderSettings, toggle } from './settings-view.js';
+import { onCsvFile, onCsvImportClick } from './import-view.js';
 
 
 export function setView(view) {
@@ -91,6 +92,8 @@ export function init() {
   $('btnMoveRight').addEventListener('click', () => onMovePeriod(1));
   $('btnRemovePeriod').addEventListener('click', onRemovePeriod);
   $('btnSample').addEventListener('click', onLoadSample);
+  $('btnCsvImport').addEventListener('click', onCsvImportClick);
+  $('csvFile').addEventListener('change', onCsvFile);
   $('btnClear').addEventListener('click', onClear);
   $('btnCopy').addEventListener('click', onCopy);
   document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => setView(t.dataset.view)));

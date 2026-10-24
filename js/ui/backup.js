@@ -169,7 +169,8 @@ export function onUndo() {
     showToast('元に戻せるデータがありません');
     return;
   }
-  setWorkspace(u.workspace, u.selected);
+  // CSV取込の対応表は覚えた設定として、元に戻しても今のものを残す
+  setWorkspace({ ...u.workspace, importMap: state.workspace.importMap ?? u.workspace.importMap }, u.selected);
   state.basis = state.data.settings.analysis.defaultBasis;
   clearUndo();
   rerenderAll();

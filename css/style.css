@@ -975,3 +975,33 @@ body.reporting .company-bar { display: none; }
 .company-row-actions .btn-small { width: auto; padding: 4px 10px; }
 .toast { width: max-content; }
 #toastText { flex: 1 1 auto; min-width: 0; }
+
+/* 試算表CSVの取込 */
+.csv-import { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 10px 0 4px; }
+.csv-import .note { margin: 0; font-size: 12px; }
+.csv-unit { margin: 4px 0 10px; }
+.csv-unit select, .csv-map select {
+  width: 100%;
+  font-size: 16px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+}
+.csv-map { display: grid; gap: 8px; }
+.csv-map-row { border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+.csv-map-row.ignored .csv-map-label, .csv-map-row.ignored .csv-map-amount { color: var(--muted); }
+.csv-map-head { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.csv-map-label { font-weight: 600; overflow-wrap: anywhere; }
+.csv-map-amount { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.csv-map-target { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.csv-map-from { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.csv-preview { margin-top: 12px; padding: 8px 10px; border-radius: 8px; background: var(--bg); border: 1px dashed var(--border); }
+.csv-preview-head { font-weight: 600; }
+.csv-preview-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.csv-preview-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 8px; }
+.csv-preview-value { text-align: right; font-variant-numeric: tabular-nums; }
+.csv-preview-before { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }
+.csv-preview-before:empty { display: none; }

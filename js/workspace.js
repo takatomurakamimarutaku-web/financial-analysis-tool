@@ -1,13 +1,17 @@
 // 複数社（顧問先・案件）の管理。DOMに依存しない純粋関数（保存の読み書きだけ storage を受け取る）。
-// 保存形式 version 8（ワークスペース）：{ version: 8, activeId, companies: [{ id, companyName, periods }], settings }
+// 保存形式 version 9（ワークスペース）：{ version: 9, activeId, companies: [{ id, companyName, periods }], settings, importMap }
+// importMap = 試算表CSV取込の科目の対応表（正規化した科目名 → 入力項目）。全社共通。
 // 設定（settings）は全社で共通。画面は「選択中の会社のデータ」（version 7 と同じ形：companyName・periods・settings）を扱う。
 import {
   CURRENT_VERSION, STORAGE_KEY, UNDO_KEY, BACKUP_FORMAT, BACKUP_FORMAT_VERSION,
   createEmptyData, normalizeData, migrate, validateData,
 } from './store.js';
 import { normalizeSettings } from './settings.js';
+import { normalizeImportMap } from './importer.js';
 
-export const WORKSPACE_VERSION = 8;
+export const WORKSPACE_VERSION = 9;
+// ワークスペース形式として読める version（8 は読込時に 9 へ移行する）
+const WORKSPACE_VERSIONS = [8, 9];
 export const MAX_COMPANIES = 30;
 export const UNNAMED_COMPANY = '（会社名未入力）';
 
@@ -34,7 +38,7 @@ function companyFrom(data, id = newCompanyId()) {
 }
 
 export function isWorkspace(raw) {
-  return isPlainObject(raw) && raw.version === WORKSPACE_VERSION && Array.isArray(raw.companies);
+  return isPlainObject(raw) && WORKSPACE_VERSIONS.includes(raw.version) && Array.isArray(raw.companies);
 }
 
 // 1社分のデータ（version 1〜7）から、その会社だけのワークスペースを作る（version 7 → 8 の移行）
@@ -42,16 +46,23 @@ export function migrateV7toV8(data) {
   const d = normalizeData(migrate(data));
   if (!d) return null;
   const c = companyFrom(d);
-  return { version: WORKSPACE_VERSION, activeId: c.id, companies: [c], settings: d.settings };
+  return { version: 8, activeId: c.id, companies: [c], settings: d.settings };
+}
+
+// version 8 → 9：CSV取込の対応表（importMap）を追加する（空で始める）
+export function migrateV8toV9(ws) {
+  if (!isPlainObject(ws) || ws.version !== 8) return ws;
+  return { ...ws, version: 9, importMap: {} };
 }
 
 export function createWorkspace(settings) {
-  return migrateV7toV8(createEmptyData(settings));
+  return migrateV8toV9(migrateV7toV8(createEmptyData(settings)));
 }
 
 // 欠けた項目を補い、各社のデータを正規化する。形が壊れていれば null
-export function normalizeWorkspace(raw) {
-  if (!isWorkspace(raw)) return null;
+export function normalizeWorkspace(input) {
+  if (!isWorkspace(input)) return null;
+  const raw = migrateV8toV9(input);
   const settings = normalizeSettings(raw.settings);
   const seen = new Set();
   const companies = [];
@@ -64,15 +75,16 @@ export function normalizeWorkspace(raw) {
     seen.add(id);
     companies.push({ id, companyName: d.companyName, periods: d.periods });
   }
-  if (!companies.length) return createWorkspace(settings);
+  if (!companies.length) return { ...createWorkspace(settings), importMap: normalizeImportMap(raw.importMap) };
   const activeId = companies.some((c) => c.id === raw.activeId) ? raw.activeId : companies[0].id;
-  return { version: WORKSPACE_VERSION, activeId, companies, settings };
+  return { version: WORKSPACE_VERSION, activeId, companies, settings, importMap: normalizeImportMap(raw.importMap) };
 }
 
-// 保存データ・バックアップ（version 1〜8）をワークスペースにする。読めなければ null
+// 保存データ・バックアップ（version 1〜9）をワークスペースにする。読めなければ null
 export function toWorkspace(raw) {
   if (isWorkspace(raw)) return normalizeWorkspace(raw);
-  return migrateV7toV8(raw);
+  const ws = migrateV7toV8(raw);
+  return ws ? normalizeWorkspace(ws) : null;
 }
 
 // ワークスペースの形式チェック（バックアップの復元用）。問題があればエラーメッセージの配列
@@ -243,6 +255,7 @@ export const UNDO_ACTIONS = {
   removePeriod: '期の削除',
   restore: 'バックアップからの復元',
   sample: 'サンプルデータの読込',
+  import: 'CSVの取込',
   removeCompany: '会社の削除',
 };
 

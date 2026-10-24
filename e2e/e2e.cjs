@@ -165,7 +165,7 @@ async function shot(page, name) {
         await page.click('#modalActions >> text=に上書き');
         await page.waitForTimeout(300);
         const ws = JSON.parse(await page.evaluate(() => localStorage.getItem('finAnalysisTool.data')));
-        assert.equal(ws.version, 8);
+        assert.equal(ws.version, 9);
         assert.equal(ws.companies.length, 1);
         assert.equal(ws.companies[0].periods.length, 3, '復元で3期に戻る');
       });
@@ -228,6 +228,38 @@ async function shot(page, name) {
         await page.waitForTimeout(300);
         assert.deepEqual(await companyNames(), ['サンプル株式会社', 'B商事']);
         await page.click('#tab-input');
+      });
+
+      await step('試算表CSVを取り込み、合計行の優先・対応表の保存・元に戻すが働く', async () => {
+        const csvPath = path.join(SHOT_DIR, 'trial-balance.csv');
+        fs.writeFileSync(csvPath, '\uFEFF科目,金額\r\n売上高,"12,345,000"\r\n現金,100000\r\n普通預金,200000\r\n現金及び預金合計,300000\r\n製品売上,5000\r\n');
+        const active = () => page.evaluate(() => {
+          const ws = JSON.parse(localStorage.getItem('finAnalysisTool.data'));
+          return { ws, c: ws.companies.find((x) => x.id === ws.activeId) };
+        });
+        await page.setInputFiles('#csvFile', csvPath);
+        await page.waitForSelector('#modal:not([hidden]) .csv-map');
+        assert.equal(await page.locator('.csv-map-row').count(), 5);
+        assert.match(await page.textContent('.csv-map-row >> nth=1'), /合計の行を優先/);
+        await page.selectOption('.csv-map-row >> nth=4 >> select', 'ignore');
+        assert.match(await page.textContent('.csv-preview'), /取り込む項目（2項目）/);
+        await shot(page, 'csv-import');
+        const { c: before } = await active();
+        await page.click('#modalActions >> text=取り込む');
+        await page.waitForTimeout(300);
+        const { ws, c } = await active();
+        const changed = c.periods.findIndex((p, i) => p.pl.sales === 12345 && before.periods[i].pl.sales !== 12345);
+        assert.ok(changed >= 0, '選択中の期に売上高 12,345千円が入る');
+        assert.equal(c.periods[changed].bs.cash, 300);
+        assert.deepEqual(ws.importMap, { '製品売上': 'ignore' });
+        await page.click('#toast .toast-action');
+        await page.waitForTimeout(200);
+        assert.deepEqual((await active()).c.periods, before.periods, '元に戻すで取込前に戻る');
+        await page.setInputFiles('#csvFile', csvPath);
+        await page.waitForSelector('#modal:not([hidden]) .csv-map');
+        assert.match(await page.textContent('.csv-map-row >> nth=4'), /前回の対応/);
+        await page.click('#modalActions >> text=キャンセル');
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
       });
 
       await step('保存できないときは画面上部に常に警告を出す', async () => {
