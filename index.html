@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="format-detection" content="telephone=no">
+  <title>財務分析ツール</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1>財務分析ツール</h1>
+    <p class="app-note">金額単位：千円 ／ データはこの端末のブラウザ内にのみ保存されます</p>
+  </header>
+
+  <main class="app-main">
+    <section class="panel" aria-label="基本情報">
+      <div class="meta-grid">
+        <label class="field">
+          <span class="field-label">会社名</span>
+          <input id="companyName" type="text" autocomplete="off" placeholder="例：サンプル株式会社">
+        </label>
+        <label class="field">
+          <span class="field-label">期</span>
+          <input id="periodLabel" type="text" autocomplete="off" placeholder="例：2025/3期">
+        </label>
+      </div>
+      <div class="actions">
+        <button type="button" id="btnSample" class="btn">サンプルデータ読込</button>
+        <button type="button" id="btnClear" class="btn btn-danger">クリア</button>
+        <button type="button" id="btnCopy" class="btn btn-primary">結果をテキストでコピー</button>
+      </div>
+    </section>
+
+    <div id="warnings" class="warnings" aria-live="polite"></div>
+
+    <div class="layout">
+      <section class="inputs" aria-label="入力">
+        <details class="panel input-group" open>
+          <summary>損益計算書（PL）</summary>
+          <div id="plFields" class="field-list"></div>
+        </details>
+        <details class="panel input-group" open>
+          <summary>貸借対照表（BS）</summary>
+          <div id="bsFields" class="field-list"></div>
+        </details>
+      </section>
+
+      <section id="results" class="results" aria-label="分析結果"></section>
+    </div>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="js/ui.js"></script>
+</body>
+</html>

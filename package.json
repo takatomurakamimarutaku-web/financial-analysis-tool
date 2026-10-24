@@ -1,0 +1,10 @@
+{
+  "name": "financial-analysis-tool",
+  "version": "1.0.0",
+  "private": true,
+  "description": "iPhoneのブラウザで使える財務分析ツール（依存パッケージなし）",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}
