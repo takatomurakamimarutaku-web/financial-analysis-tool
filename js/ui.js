@@ -16,6 +16,9 @@ import {
   createLineItem, addLineItem, removeLineItem, deleteAllData,
 } from './store.js';
 import { buildLineChartSvg } from './chart.js';
+import {
+  plSteps, ebitdaSteps, netDebtSteps, buildWaterfallSvg, bsBoxes, buildBsBoxSvg, cccParts, buildCccSvg,
+} from './diagrams.js';
 import { buildComparisonCsv, buildBridgeCsv, buildNetDebtCsv, csvFileName, CSV_KINDS } from './csv.js';
 import {
   registerServiceWorker, requestPersistentStorage, checkForUpdate, isStoragePersisted, APP_VERSION,
@@ -1024,6 +1027,14 @@ const SECTION_NAV = {
     ['sec-nd', '運転資本・ネットデット'],
     ['sec-backup', 'バックアップ'],
   ],
+  diagram: [
+    ['sec-dg-period', '期'],
+    ['sec-dg-pl', '損益'],
+    ['sec-dg-bs', '財産と集め方'],
+    ['sec-dg-ccc', 'お金の回収'],
+    ['sec-dg-ebitda', '正常化EBITDA'],
+    ['sec-dg-nd', '実質的な借入'],
+  ],
   compare: [
     ['sec-cmp-setting', '基準'],
     ['sec-cmp-table', '比較表'],
@@ -1077,6 +1088,87 @@ function renderSectionNav(view) {
   }, { rootMargin: '-120px 0px -60% 0px' });
   for (const [id] of items) if ($(id)) sectionObserver.observe($(id));
   updateNavHeight();
+}
+
+// ---- 図解タブ ----
+
+function pctOf(part, whole) {
+  return isNum(part) && isNum(whole) && whole !== 0 ? fv({ value: part / whole, status: 'ok' }, '%') : '—';
+}
+
+function setSvg(id, svg) {
+  // svg は diagrams.js で全テキストをエスケープ済み
+  $(id).innerHTML = svg;
+}
+
+function renderDiagramPeriods() {
+  const box = $('dgPeriodChips');
+  box.replaceChildren(...state.data.periods.map((p, i) => {
+    const chip = el('button', { type: 'button', className: 'chip', role: 'tab', 'aria-selected': String(i === state.selected), text: periodName(p, i) });
+    chip.addEventListener('click', () => {
+      selectPeriod(i);
+      renderDiagrams();
+    });
+    return chip;
+  }));
+}
+
+function renderDiagrams() {
+  renderDiagramPeriods();
+  renderUnitLabels();
+  const p = currentPeriod();
+  const amt = (v) => (isNum(v) ? `${fa(v)}` : '—');
+  const signedAmt = (v, b) => (b.kind === 'delta' ? formatSigned(v) : amt(v));
+  // 名称を変更した科目はその名称、変更していなければ図に合う短い名称（例：「流動資産合計」→「流動資産」）
+  const label = (k, d) => {
+    const a = [...settings().accounts.pl, ...settings().accounts.bs].find((x) => x.key === k);
+    return (a?.label ?? '').trim() || d;
+  };
+  const u = unitName();
+
+  // 損益の滝グラフ
+  const pl = p.pl;
+  setSvg('dgPl', buildWaterfallSvg({ steps: plSteps(pl, label), format: signedAmt, title: '損益の滝グラフ' }));
+  $('dgPlInsight').textContent = isNum(pl.sales) && pl.sales > 0
+    ? `売上高 ${amt(pl.sales)}${u} のうち、売上総利益は ${pctOf(diffOrNull(pl.sales, pl.costOfSales), pl.sales)}、営業利益は ${pctOf(pl.operatingIncome, pl.sales)}${isNum(pl.netIncome) ? `、当期純利益は ${pctOf(pl.netIncome, pl.sales)}` : ''} が残っています。`
+    : '売上高・売上原価・販管費・営業利益を入力すると表示します。';
+
+  // BS の面積図
+  const bs = p.bs;
+  const boxes = bsBoxes(bs);
+  setSvg('dgBs', buildBsBoxSvg({ boxes, format: amt, label }));
+  if (!boxes) $('dgBsInsight').textContent = '流動資産・固定資産・流動負債・固定負債・純資産を入力すると表示します。';
+  else if (boxes.insolvent) $('dgBsInsight').textContent = `負債が資産を ${amt(-bs.netAssets)}${u} 上回っています（債務超過）。返済不要の純資産がマイナスの状態です。`;
+  else {
+    const r = calcIndicators(p, { days: days() });
+    $('dgBsInsight').textContent = `資産の ${fv(r.equityRatio, '%')} を返済不要の純資産でまかなっています（自己資本比率）。1年以内に払う流動負債に対し、流動資産は ${fv(r.currentRatio, '%')} あります（流動比率）。${boxes.balanced ? '' : '※資産合計と負債・純資産合計が一致していないため、左右の高さがずれています。'}`;
+  }
+
+  // CCC
+  const parts = cccParts(calcIndicators(p, { days: days() }));
+  const dayFmt = (v) => fv({ value: v, status: 'ok' }, '日');
+  setSvg('dgCcc', buildCccSvg({ parts, format: dayFmt }));
+  if (!parts) $('dgCccInsight').textContent = '売上高・売上原価・売上債権・棚卸資産・仕入債務を入力すると表示します。';
+  else if (parts.ccc > 0) $('dgCccInsight').textContent = `仕入代金を支払ってから売上代金を回収するまで、約 ${dayFmt(parts.ccc)} 分のお金を会社が立て替えています。`;
+  else $('dgCccInsight').textContent = `仕入代金を支払う前に売上代金を回収できています（CCC ${dayFmt(parts.ccc)}）。運転資金の負担が小さい状態です。`;
+
+  // EBITDA の正常化
+  const n = calcNormalizedEbitda(p, settings().adjustmentCategoryNames);
+  setSvg('dgEbitda', buildWaterfallSvg({ steps: ebitdaSteps(n), format: signedAmt, title: 'EBITDAの正常化' }));
+  if (!isNum(n.reported)) $('dgEbitdaInsight').textContent = '営業利益・減価償却費を入力すると表示します。';
+  else if (!(p.adjustments ?? []).length) $('dgEbitdaInsight').textContent = `報告EBITDAは ${amt(n.reported)}${u} です。調整項目を登録すると、正常化EBITDAまでの流れを表示します。`;
+  else $('dgEbitdaInsight').textContent = `調整により、EBITDAは ${formatSigned(n.adjustmentTotal)}${u}（${pctOf(n.adjustmentTotal, n.reported)}）変わり、正常化EBITDAは ${amt(n.normalized)}${u} です。`;
+
+  // 調整後ネットデット
+  const nd = calcAdjustedNetDebt(p, settings().adjustmentCategoryNames);
+  setSvg('dgNd', buildWaterfallSvg({ steps: netDebtSteps(nd, label), format: signedAmt, title: '調整後ネットデット' }));
+  if (!isNum(nd.adjusted)) $('dgNdInsight').textContent = '有利子負債・現預金を入力すると表示します。';
+  else if (nd.adjusted < 0) $('dgNdInsight').textContent = `手元資金が実質的な借入を ${amt(-nd.adjusted)}${u} 上回っています（ネットキャッシュ）。`;
+  else $('dgNdInsight').textContent = `実質的な借入は ${amt(nd.adjusted)}${u} です。${nd.multiple.status === 'ok' ? `正常化EBITDAの ${fv(nd.multiple, '倍')} 分にあたり、何年分の稼ぎで返せるかの目安になります。` : ''}`;
+}
+
+function diffOrNull(a, b) {
+  return isNum(a) && isNum(b) ? a - b : null;
 }
 
 // ---- 設定タブ ----
@@ -1438,6 +1530,7 @@ function setView(view) {
   $('view-input').hidden = view !== 'input';
   $('view-compare').hidden = view !== 'compare';
   $('view-settings').hidden = view !== 'settings';
+  $('view-diagram').hidden = view !== 'diagram';
   const reporting = view === 'report';
   document.body.classList.toggle('reporting', reporting);
   document.querySelector('.app-header').hidden = reporting;
@@ -1447,6 +1540,7 @@ function setView(view) {
   $('view-report').hidden = !reporting;
   if (view === 'compare') renderCompare();
   if (view === 'settings') renderSettings();
+  if (view === 'diagram') renderDiagrams();
   if (reporting) renderReport();
   window.scrollTo(0, 0);
 }
@@ -1459,6 +1553,7 @@ function update() {
   renderNetDebtSummary();
   renderBackupStatus();
   if (state.view === 'compare') renderCompare();
+  if (state.view === 'diagram') renderDiagrams();
   scheduleSave();
 }
 

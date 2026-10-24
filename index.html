@@ -34,6 +34,7 @@
     <nav class="tabs" role="tablist" aria-label="画面切替">
       <button type="button" role="tab" id="tab-input" class="tab" aria-controls="view-input" aria-selected="true" data-view="input">入力</button>
       <button type="button" role="tab" id="tab-compare" class="tab" aria-controls="view-compare" aria-selected="false" data-view="compare">比較</button>
+      <button type="button" role="tab" id="tab-diagram" class="tab" aria-controls="view-diagram" aria-selected="false" data-view="diagram">図解</button>
       <button type="button" role="tab" id="tab-settings" class="tab" aria-controls="view-settings" aria-selected="false" data-view="settings">設定</button>
     </nav>
     <nav id="sectionNav" class="section-nav" aria-label="項目へ移動"></nav>
@@ -200,6 +201,55 @@
       <section id="sec-charts" aria-label="推移グラフ">
         <h2 class="section-title">主要指標の推移</h2>
         <div id="charts" class="charts"></div>
+      </section>
+    </div>
+
+    <!-- 図解タブ（選択中の期を図で見る） -->
+    <div id="view-diagram" role="tabpanel" aria-labelledby="tab-diagram" hidden>
+      <section id="sec-dg-period" class="panel">
+        <span class="field-label">表示する期（入力タブで選んでいる期と連動します）</span>
+        <div id="dgPeriodChips" class="period-chips" role="tablist" aria-label="図解の期の選択"></div>
+        <p class="note">金額の単位：<span class="unit-name" data-scope="compare">千円</span>（設定 →「分析結果・比較表・グラフ」の単位）</p>
+      </section>
+      <section id="sec-dg-pl" class="panel diagram-card" aria-label="損益の滝グラフ">
+        <h2 class="panel-title">売上からいくら利益が残る？（損益の滝グラフ）</h2>
+        <p id="dgPlInsight" class="insight"></p>
+        <div id="dgPl" class="diagram-holder"></div>
+        <details class="howto"><summary>この図の見方</summary>
+          <p>いちばん上の売上高から、売上原価・販管費などの費用を順に差し引き、最後に残る利益までを表しています。青い棒がその時点で残っている金額、赤い棒が差し引かれた費用、緑の棒は増えた分（営業外の収益など）です。費用の棒が長いほど、売上に対する負担が大きいことを示します。</p>
+        </details>
+      </section>
+      <section id="sec-dg-bs" class="panel diagram-card" aria-label="BSの面積図">
+        <h2 class="panel-title">会社の財産と、その集め方（BSの面積図）</h2>
+        <p id="dgBsInsight" class="insight"></p>
+        <div id="dgBs" class="diagram-holder"></div>
+        <details class="howto"><summary>この図の見方</summary>
+          <p>左が会社の持っている財産（資産）、右がそのお金をどう集めたか（負債＝いずれ返すお金、純資産＝返さなくてよいお金）です。箱の大きさは金額に比例します。右下の純資産が大きいほど財務は安定しています。左上の流動資産が右上の流動負債より大きければ、1年以内の支払いに備えがあると読めます。純資産がマイナス（債務超過）の場合は、左側に赤い「債務超過」の箱を表示します。</p>
+        </details>
+      </section>
+      <section id="sec-dg-ccc" class="panel diagram-card" aria-label="お金が戻るまでの日数">
+        <h2 class="panel-title">お金が戻るまでの日数（CCC）</h2>
+        <p id="dgCccInsight" class="insight"></p>
+        <div id="dgCcc" class="diagram-holder"></div>
+        <details class="howto"><summary>この図の見方</summary>
+          <p>上の帯は、商品を仕入れてから在庫として保管し（在庫の日数）、売った後に代金を回収する（売掛金の日数）までの日数です。中の帯は、仕入代金を支払うまでの日数です。支払ってから回収するまでの差（下の帯）が、会社が自分のお金を立て替えている期間＝CCCです。短いほど資金繰りが楽になります。</p>
+        </details>
+      </section>
+      <section id="sec-dg-ebitda" class="panel diagram-card" aria-label="EBITDAの正常化">
+        <h2 class="panel-title">実力の稼ぐ力（EBITDAの正常化）</h2>
+        <p id="dgEbitdaInsight" class="insight"></p>
+        <div id="dgEbitda" class="diagram-holder"></div>
+        <details class="howto"><summary>この図の見方</summary>
+          <p>EBITDA（営業利益＋減価償却費）は、会社が本業でどれだけ現金を稼ぐ力があるかの目安です。M&amp;Aでは、オーナーの役員報酬や一度きりの費用など「通常の年には発生しない影響」を取り除いた正常化EBITDAで実力を見ます。緑の棒は足し戻した調整、赤い棒は差し引いた調整です。調整は入力タブの「正常化EBITDA」で登録します。</p>
+        </details>
+      </section>
+      <section id="sec-dg-nd" class="panel diagram-card" aria-label="実質的な借入">
+        <h2 class="panel-title">実質的な借入はいくら？（調整後ネットデット）</h2>
+        <p id="dgNdInsight" class="insight"></p>
+        <div id="dgNd" class="diagram-holder"></div>
+        <details class="howto"><summary>この図の見方</summary>
+          <p>借入金などの有利子負債に、借入と同じように将来払う必要があるもの（デットライク項目：退職金の引当など）を加え、すぐ返済に充てられる現預金や定期預金など（キャッシュライク項目）を差し引いた「実質的な借入」です。M&amp;Aでは、会社全体の価値からこの金額を差し引いたものが株式の価値の目安になります。マイナスなら、借入より手元資金が多い状態（ネットキャッシュ）です。</p>
+        </details>
       </section>
     </div>
 

@@ -744,3 +744,37 @@ input[type="text"][aria-invalid="true"] { border-color: var(--danger); }
 .kpi-sub .up { color: var(--accent); }
 .kpi-sub .down { color: var(--danger); }
 @media (min-width: 600px) { .summary-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+/* ---- 図解タブ ---- */
+.diagram { width: 100%; height: auto; display: block; margin-top: 8px; }
+.diagram-holder { overflow: hidden; }
+.insight { margin: 6px 0 0; font-size: 14px; line-height: 1.6; }
+.howto { margin-top: 8px; font-size: 13px; color: var(--muted); }
+.howto > summary { cursor: pointer; color: var(--primary); font-weight: 600; }
+.howto p { margin: 6px 0 0; line-height: 1.7; }
+.wf-label { fill: var(--muted); font-size: 11px; }
+.wf-label-total { fill: var(--text); font-weight: 700; }
+.wf-value { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.wf-value-total { fill: var(--text); font-weight: 700; }
+.wf-total { fill: var(--primary); }
+.wf-total.wf-negative { fill: var(--danger); }
+.wf-up { fill: var(--accent); }
+.wf-down { fill: color-mix(in srgb, var(--danger) 70%, var(--surface)); }
+.wf-link { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 2 2; }
+.bs-head { fill: var(--muted); font-size: 11px; font-weight: 600; }
+.bs-box { stroke: var(--surface); stroke-width: 1.5; }
+.bs-currentAssets { fill: #5b8fd6; }
+.bs-fixedAssets { fill: #2f5fa8; }
+.bs-currentLiabilities { fill: #e0a458; }
+.bs-fixedLiabilities { fill: #c27c2c; }
+.bs-netAssets { fill: #1f8f84; }
+.bs-deficit { fill: #c2413a; }
+.bs-label { fill: #ffffff; font-size: 12px; font-weight: 700; }
+.bs-label-small { font-size: 10px; }
+.bs-value { fill: #ffffff; font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.ccc-inv { fill: #7aa6e0; }
+.ccc-rec { fill: var(--primary); }
+.ccc-pay { fill: #e0a458; }
+.ccc-gap { fill: var(--danger); }
+.ccc-text { fill: #ffffff; font-size: 10.5px; font-weight: 600; }
+.ccc-note { fill: var(--accent); font-size: 11.5px; font-weight: 600; }
