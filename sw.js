@@ -3,7 +3,7 @@
 // 外部へのリクエストは行わない（同一オリジンの GET のみ扱う）。
 
 const CACHE_PREFIX = 'fin-tool-';
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;
 
 // キャッシュ対象（sw.js からの相対パス。"/" から始まる絶対パスは使わない）
@@ -13,6 +13,7 @@ const ASSETS = [
   './css/style.css',
   './js/calc.js',
   './js/chart.js',
+  './js/csv.js',
   './js/pwa.js',
   './js/store.js',
   './js/ui.js',

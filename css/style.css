@@ -418,3 +418,47 @@ input[type="text"]:focus { outline: 2px solid var(--primary); outline-offset: -1
 .bridge-compare td.avg-col, .bridge-compare th.avg-col { background: var(--bg); }
 /* 見出しの下に置く表は、見出しと重ならないよう上下の負のマージンをなくす */
 .panel-title ~ .table-scroll { margin: 8px -12px 0; border-radius: 0; }
+
+/* ---- Phase 5：出力・印刷用レポート ---- */
+.export-actions { margin-top: 6px; }
+.report-view { padding: 16px; padding-top: max(16px, env(safe-area-inset-top)); padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); padding-bottom: calc(32px + env(safe-area-inset-bottom)); }
+.report-toolbar { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.report-help { margin: 0 0 12px; }
+.report {
+  background: #fff;
+  color: #111;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  font-size: 12px;
+  line-height: 1.45;
+  max-width: 210mm;
+  margin: 0 auto;
+  overflow-x: auto;
+}
+.report h1 { font-size: 18px; margin: 0 0 4px; }
+.report h2 { font-size: 13px; margin: 14px 0 4px; border-bottom: 1.5px solid #1f5fbf; padding-bottom: 2px; color: #1f5fbf; }
+.report .report-meta { color: #444; margin: 0 0 6px; }
+.report table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.report th, .report td { border: 1px solid #cfd5dd; padding: 3px 5px; }
+.report thead th { background: #eef2f7; font-weight: 600; text-align: center; }
+.report tbody th { text-align: left; font-weight: 400; white-space: nowrap; }
+.report td { text-align: right; white-space: nowrap; }
+.report td.text { text-align: left; white-space: normal; }
+.report tr.total th, .report tr.total td { font-weight: 700; background: #f6f8fb; }
+.report tr.indent th { padding-left: 1.2em; }
+.report .neg { color: #b42318; }
+.report ul { margin: 4px 0; padding-left: 1.4em; }
+.report .notes { color: #333; }
+
+@media print {
+  @page { size: A4 portrait; margin: 12mm; }
+  body { background: #fff; }
+  /* レポート表示中に印刷したときはレポートだけを出す */
+  body.reporting .app-header, body.reporting .app-main, .update-bar, .toast, .report-toolbar, .report-help { display: none !important; }
+  .report-view { padding: 0; }
+  .report { border: none; border-radius: 0; padding: 0; max-width: none; font-size: 9.5pt; overflow: visible; }
+  .report h2 { break-after: avoid; }
+  .report table, .report section { break-inside: avoid; }
+}
+.report td.text:first-child { white-space: nowrap; }

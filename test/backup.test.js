@@ -124,3 +124,22 @@ describe('最終バックアップ日時と案内', () => {
     assert.equal(hasAnyData(d), true);
   });
 });
+
+describe('すべてのデータを削除', () => {
+  test('入力データと最終バックアップ日時を削除する', async () => {
+    const { deleteAllData, saveData, STORAGE_KEY } = await import('../js/store.js');
+    const st = memoryStorage();
+    saveData(getSampleData(), st);
+    setLastBackupAt(NOW, st);
+    st.setItem('other.app', 'keep');
+    assert.deepEqual(deleteAllData(st), { ok: true, error: null });
+    assert.equal(st.map.has(STORAGE_KEY), false);
+    assert.equal(st.map.has(LAST_BACKUP_KEY), false);
+    assert.equal(st.map.get('other.app'), 'keep');
+  });
+  test('storage が使えない・例外でも止まらない', async () => {
+    const { deleteAllData } = await import('../js/store.js');
+    assert.equal(deleteAllData(null).ok, false);
+    assert.equal(deleteAllData({ removeItem() { throw new Error('x'); } }).ok, false);
+  });
+});

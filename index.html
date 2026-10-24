@@ -69,6 +69,7 @@
         <div class="actions">
           <button type="button" id="btnExport" class="btn">バックアップを保存</button>
           <button type="button" id="btnImport" class="btn">バックアップから復元</button>
+          <button type="button" id="btnDeleteAll" class="btn btn-danger">すべてのデータを削除</button>
           <input type="file" id="importFile" accept="application/json,.json" hidden>
         </div>
       </section>
@@ -139,6 +140,17 @@
         <p id="basisNote" class="note"></p>
       </section>
 
+      <section class="panel" aria-label="出力">
+        <span class="field-label">出力</span>
+        <div class="actions export-actions">
+          <button type="button" id="btnCsvCompare" class="btn">比較表CSV</button>
+          <button type="button" id="btnCsvBridge" class="btn">EBITDAブリッジCSV</button>
+          <button type="button" id="btnCsvNetDebt" class="btn">ネットデット内訳CSV</button>
+          <button type="button" id="btnReport" class="btn btn-primary">印刷用レポート</button>
+        </div>
+        <p class="note">CSVはExcelで開けるBOM付きUTF-8です。比較表CSVは、いま選んでいる基準（期末残高／平均残高）で出力します。</p>
+      </section>
+
       <section class="panel" aria-label="比較表">
         <div class="table-scroll" tabindex="0" aria-label="比較表（横にスクロールできます）">
           <table id="compareTable" class="compare-table"></table>
@@ -173,6 +185,16 @@
       </section>
     </div>
   </main>
+
+  <!-- 印刷用レポート -->
+  <div id="view-report" class="report-view" hidden>
+    <div class="report-toolbar">
+      <button type="button" id="btnReportBack" class="btn">← 戻る</button>
+      <button type="button" id="btnPrint" class="btn btn-primary">印刷・PDF保存</button>
+    </div>
+    <p class="note report-help">iPhone：「印刷・PDF保存」→ 共有ボタン →「"ファイル"に保存」でPDFとして保存できます（または共有シートの「プリント」でプレビューを2本指で拡大してPDF化）。</p>
+    <article id="report" class="report" aria-label="印刷用レポート"></article>
+  </div>
 
   <div id="updateBar" class="update-bar" role="status" hidden>
     <span>新しいバージョンがあります</span>

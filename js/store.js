@@ -512,3 +512,15 @@ export function removeLineItem(data, periodIndex, listKey, id) {
   if (!LINE_LISTS.includes(listKey)) return data;
   return updatePeriod(data, periodIndex, (p) => ({ ...p, [listKey]: (p[listKey] ?? []).filter((a) => a.id !== id) }));
 }
+
+// すべてのデータを削除する（入力データと最終バックアップ日時）
+export function deleteAllData(storage = defaultStorage()) {
+  if (!storage) return { ok: false, error: 'この環境ではデータを保存できません' };
+  try {
+    storage.removeItem(STORAGE_KEY);
+    storage.removeItem(LAST_BACKUP_KEY);
+    return { ok: true, error: null };
+  } catch {
+    return { ok: false, error: 'データを削除できませんでした' };
+  }
+}
