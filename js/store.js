@@ -1,6 +1,6 @@
 // データの保存・読込（localStorage のみ。外部送信は行わない）
 // storage は引数で差し替え可能（テストではメモリ上のモックを渡す）
-import { PL_FIELDS, BS_FIELDS, isNum } from './calc.js';
+import { PL_FIELDS, BS_FIELDS, MAX_PERIODS, isNum } from './calc.js';
 
 export const STORAGE_KEY = 'finAnalysisTool.data';
 export const CURRENT_VERSION = 1;
@@ -53,6 +53,34 @@ export function getSampleData() {
         adjustments: [],
         debtLikeItems: [],
       },
+    ],
+  };
+}
+
+// 複数期のサンプル（最終期は getSampleData と同じ数値）
+export function getSampleMultiData() {
+  const latest = getSampleData();
+  const period = (label, pl, bs) => ({ label, pl, bs, adjustments: [], debtLikeItems: [] });
+  return {
+    ...latest,
+    periods: [
+      period('2023/3期', {
+        sales: 82000, costOfSales: 50840, sga: 26000, operatingIncome: 5160,
+        ordinaryIncome: 4300, netIncome: 2800, depreciation: 4200, interestExpense: 1200,
+      }, {
+        cash: 14000, receivables: 13500, inventory: 9800, currentAssets: 42000,
+        fixedAssets: 48000, totalAssets: 90000, payables: 7200, currentLiabilities: 30000,
+        fixedLiabilities: 32000, interestBearingDebt: 44000, netAssets: 28000,
+      }),
+      period('2024/3期', {
+        sales: 91000, costOfSales: 55510, sga: 28000, operatingIncome: 7490,
+        ordinaryIncome: 6600, netIncome: 4200, depreciation: 4600, interestExpense: 1100,
+      }, {
+        cash: 17000, receivables: 14200, inventory: 10300, currentAssets: 46000,
+        fixedAssets: 49000, totalAssets: 95000, payables: 7600, currentLiabilities: 30000,
+        fixedLiabilities: 32800, interestBearingDebt: 42000, netAssets: 32200,
+      }),
+      ...latest.periods,
     ],
   };
 }
@@ -136,4 +164,42 @@ export function clearData(storage = defaultStorage()) {
   } catch {
     return { ok: false, error: 'データを削除できませんでした' };
   }
+}
+
+// ---- 期の操作（元のデータは変更せず、新しいデータを返す） ----
+
+// 期名の先頭の西暦を1年進める（例：「2025/3期」→「2026/3期」）。西暦で始まらなければ空文字。
+export function suggestNextLabel(label) {
+  const m = typeof label === 'string' ? label.match(/^(\d{4})(.*)$/) : null;
+  return m ? `${Number(m[1]) + 1}${m[2]}` : '';
+}
+
+// 末尾（最新）に期を追加する。上限に達していれば元のデータをそのまま返す。
+export function addPeriod(data) {
+  if (data.periods.length >= MAX_PERIODS) return data;
+  const last = data.periods[data.periods.length - 1];
+  return { ...data, periods: [...data.periods, createEmptyPeriod(suggestNextLabel(last?.label))] };
+}
+
+// 期を削除する。最後の1期は削除せず空にする。
+export function removePeriod(data, index) {
+  if (index < 0 || index >= data.periods.length) return data;
+  if (data.periods.length === 1) return { ...data, periods: [createEmptyPeriod('')] };
+  return { ...data, periods: data.periods.filter((_, i) => i !== index) };
+}
+
+// 期を delta（-1 = 前へ、+1 = 後へ）だけ移動する。範囲外なら変更しない。
+export function movePeriod(data, index, delta) {
+  const to = index + delta;
+  if (index < 0 || index >= data.periods.length || to < 0 || to >= data.periods.length) return data;
+  const periods = [...data.periods];
+  const [p] = periods.splice(index, 1);
+  periods.splice(to, 0, p);
+  return { ...data, periods };
+}
+
+export function renamePeriod(data, index, label) {
+  if (index < 0 || index >= data.periods.length) return data;
+  const periods = data.periods.map((p, i) => (i === index ? { ...p, label: String(label) } : p));
+  return { ...data, periods };
 }

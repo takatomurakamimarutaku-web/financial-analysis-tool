@@ -68,7 +68,6 @@ body {
   margin-bottom: 12px;
 }
 
-.meta-grid { display: grid; gap: 8px; grid-template-columns: 1fr; }
 
 .field { display: block; min-width: 0; }
 .field-label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 2px; }
@@ -194,13 +193,138 @@ input[type="text"]:focus { outline: 2px solid var(--primary); outline-offset: -1
   pointer-events: none;
   transition: opacity .2s;
   max-width: calc(100% - 32px);
+  z-index: 10;
 }
 .toast.show { opacity: 1; }
 
-@media (min-width: 600px) {
-  .meta-grid { grid-template-columns: 2fr 1fr; }
-}
-
 @media (min-width: 900px) {
   .layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+}
+
+/* ---- Phase 2：タブ・期の操作・比較表・グラフ ---- */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.tab {
+  flex: 1;
+  font-size: 15px;
+  padding: 10px 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+}
+.tab[aria-selected="true"] { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+
+.period-bar { margin-top: 12px; }
+.period-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  font-size: 14px;
+  padding: 6px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  min-height: 34px;
+}
+.chip[aria-selected="true"] { background: var(--primary); border-color: var(--primary); color: var(--primary-text); }
+.chip-add { border-style: dashed; color: var(--primary); }
+.chip-add:disabled { color: var(--muted); cursor: default; }
+
+.period-edit {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+.period-ops { display: flex; gap: 8px; align-items: end; }
+.btn-icon { min-width: 44px; }
+.btn:disabled { opacity: .45; cursor: default; }
+
+.compare-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg {
+  font-size: 14px;
+  padding: 8px 14px;
+  border: none;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+.seg + .seg { border-left: 1px solid var(--border); }
+.seg[aria-checked="true"] { background: var(--primary); color: var(--primary-text); }
+.check { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; }
+.check input { width: 18px; height: 18px; }
+.note { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: -12px;
+  border-radius: var(--radius);
+}
+.compare-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  min-width: 100%;
+}
+.compare-table th, .compare-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  text-align: right;
+  vertical-align: top;
+  font-variant-numeric: tabular-nums;
+}
+.compare-table thead th { background: var(--bg); font-weight: 600; position: sticky; top: 0; }
+.compare-table .row-head {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
+  text-align: left;
+  white-space: normal;
+  min-width: 8.5em;
+  max-width: 9.5em;
+  font-weight: 400;
+  box-shadow: 1px 0 0 var(--border);
+}
+.compare-table thead .row-head { background: var(--bg); z-index: 2; }
+.compare-table .group-row th {
+  text-align: left;
+  background: var(--bg);
+  font-weight: 600;
+}
+/* 横スクロールしても区分名が見えるよう、内側の文字だけ固定する */
+.compare-table .group-row th span { position: sticky; left: 10px; }
+.compare-table .avg-mark { color: var(--primary); font-size: 11px; margin-left: 2px; }
+.cell-value { display: block; font-weight: 600; }
+.cell-value.na { color: var(--na); font-weight: 400; }
+.cell-value.negative { color: var(--danger); }
+.cell-change { display: block; font-size: 11px; color: var(--muted); }
+
+.section-title { font-size: 16px; margin: 4px 0 8px; }
+.charts { display: grid; grid-template-columns: 1fr; gap: 12px; }
+.chart-card h3 { font-size: 14px; margin: 0 0 4px; }
+.chart { width: 100%; height: auto; display: block; }
+.chart-grid { stroke: var(--border); stroke-width: 1; }
+.chart-zero { stroke: var(--muted); }
+.chart-tick, .chart-label { fill: var(--muted); font-size: 10px; }
+.chart-line { fill: none; stroke: var(--primary); stroke-width: 2; stroke-linejoin: round; }
+.chart-dot { fill: var(--primary); }
+.chart-value { fill: var(--text); font-size: 11px; font-weight: 600; }
+.chart-empty { fill: var(--muted); font-size: 12px; }
+
+@media (min-width: 600px) {
+  .period-edit { grid-template-columns: 1fr auto; align-items: end; }
+  .charts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 900px) {
+  .charts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }

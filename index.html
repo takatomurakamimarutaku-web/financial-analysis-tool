@@ -11,42 +11,90 @@
   <header class="app-header">
     <h1>財務分析ツール</h1>
     <p class="app-note">金額単位：千円 ／ データはこの端末のブラウザ内にのみ保存されます</p>
+    <nav class="tabs" role="tablist" aria-label="画面切替">
+      <button type="button" role="tab" id="tab-input" class="tab" aria-controls="view-input" aria-selected="true" data-view="input">入力</button>
+      <button type="button" role="tab" id="tab-compare" class="tab" aria-controls="view-compare" aria-selected="false" data-view="compare">比較</button>
+    </nav>
   </header>
 
   <main class="app-main">
-    <section class="panel" aria-label="基本情報">
-      <div class="meta-grid">
+    <div id="warnings-global" class="warnings" aria-live="polite"></div>
+
+    <!-- 入力タブ -->
+    <div id="view-input" role="tabpanel" aria-labelledby="tab-input">
+      <section class="panel" aria-label="基本情報">
         <label class="field">
           <span class="field-label">会社名</span>
           <input id="companyName" type="text" autocomplete="off" placeholder="例：サンプル株式会社">
         </label>
-        <label class="field">
-          <span class="field-label">期</span>
-          <input id="periodLabel" type="text" autocomplete="off" placeholder="例：2025/3期">
-        </label>
-      </div>
-      <div class="actions">
-        <button type="button" id="btnSample" class="btn">サンプルデータ読込</button>
-        <button type="button" id="btnClear" class="btn btn-danger">クリア</button>
-        <button type="button" id="btnCopy" class="btn btn-primary">結果をテキストでコピー</button>
-      </div>
-    </section>
 
-    <div id="warnings" class="warnings" aria-live="polite"></div>
+        <div class="period-bar">
+          <span class="field-label">期（左が古い期。最大5期）</span>
+          <div id="periodChips" class="period-chips" role="tablist" aria-label="期の選択"></div>
+        </div>
+        <div class="period-edit">
+          <label class="field">
+            <span class="field-label">期名</span>
+            <input id="periodLabel" type="text" autocomplete="off" placeholder="例：2025/3期">
+          </label>
+          <div class="period-ops">
+            <button type="button" id="btnMoveLeft" class="btn btn-icon" aria-label="選択中の期を前へ移動">←</button>
+            <button type="button" id="btnMoveRight" class="btn btn-icon" aria-label="選択中の期を後へ移動">→</button>
+            <button type="button" id="btnRemovePeriod" class="btn btn-danger">期を削除</button>
+          </div>
+        </div>
 
-    <div class="layout">
-      <section class="inputs" aria-label="入力">
-        <details class="panel input-group" open>
-          <summary>損益計算書（PL）</summary>
-          <div id="plFields" class="field-list"></div>
-        </details>
-        <details class="panel input-group" open>
-          <summary>貸借対照表（BS）</summary>
-          <div id="bsFields" class="field-list"></div>
-        </details>
+        <div class="actions">
+          <button type="button" id="btnSample" class="btn">サンプルデータ読込</button>
+          <button type="button" id="btnClear" class="btn btn-danger">クリア</button>
+          <button type="button" id="btnCopy" class="btn btn-primary">結果をテキストでコピー</button>
+        </div>
       </section>
 
-      <section id="results" class="results" aria-label="分析結果"></section>
+      <div id="warnings" class="warnings" aria-live="polite"></div>
+
+      <div class="layout">
+        <section class="inputs" aria-label="入力">
+          <details class="panel input-group" open>
+            <summary>損益計算書（PL）</summary>
+            <div id="plFields" class="field-list"></div>
+          </details>
+          <details class="panel input-group" open>
+            <summary>貸借対照表（BS）</summary>
+            <div id="bsFields" class="field-list"></div>
+          </details>
+        </section>
+
+        <section id="results" class="results" aria-label="分析結果（期末残高ベース）"></section>
+      </div>
+    </div>
+
+    <!-- 比較タブ -->
+    <div id="view-compare" role="tabpanel" aria-labelledby="tab-compare" hidden>
+      <section class="panel">
+        <div class="compare-head">
+          <div class="segmented" role="radiogroup" aria-label="計算の基準">
+            <button type="button" class="seg" role="radio" data-basis="end" aria-checked="true">期末残高</button>
+            <button type="button" class="seg" role="radio" data-basis="average" aria-checked="false">平均残高</button>
+          </div>
+          <label class="check">
+            <input type="checkbox" id="showChange" checked>
+            <span>前期比を表示</span>
+          </label>
+        </div>
+        <p id="basisNote" class="note"></p>
+      </section>
+
+      <section class="panel" aria-label="比較表">
+        <div class="table-scroll" tabindex="0" aria-label="比較表（横にスクロールできます）">
+          <table id="compareTable" class="compare-table"></table>
+        </div>
+      </section>
+
+      <section aria-label="推移グラフ">
+        <h2 class="section-title">主要指標の推移</h2>
+        <div id="charts" class="charts"></div>
+      </section>
     </div>
   </main>
 

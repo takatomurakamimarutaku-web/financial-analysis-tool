@@ -126,12 +126,14 @@ export const INDICATORS = [
   },
   {
     id: 'roa', category: 'profitability', name: 'ROA（総資産経常利益率）', unit: '%',
+    averageable: true,
     formula: '経常利益 ÷ 総資産',
     guide: '資産全体をどれだけ効率よく利益に結びつけたか。中小企業では5%程度が一つの目安。',
     compute: ({ pl, bs }) => safeDiv(pl.ordinaryIncome, bs.totalAssets),
   },
   {
     id: 'roe', category: 'profitability', name: 'ROE（自己資本利益率）', unit: '%',
+    averageable: true,
     formula: '当期純利益 ÷ 自己資本',
     guide: '株主の資本でどれだけ利益を上げたか。8〜10%以上が一つの目安。自己資本が小さいと高く出やすい点に注意。',
     insolventNA: true,
@@ -195,24 +197,28 @@ export const INDICATORS = [
   },
   {
     id: 'receivableDays', category: 'efficiency', name: '売上債権回転日数', unit: '日',
+    averageable: true,
     formula: '売上債権 ÷ 売上高 × 365',
     guide: '売上の回収にかかる日数。取引条件（サイト）と比べて長い場合は回収遅延や不良債権に注意。',
     compute: receivableDays,
   },
   {
     id: 'inventoryDays', category: 'efficiency', name: '棚卸資産回転日数', unit: '日',
+    averageable: true,
     formula: '棚卸資産 ÷ 売上原価 × 365',
     guide: '在庫が何日分あるか。長期化は過剰在庫・滞留在庫の可能性。',
     compute: inventoryDays,
   },
   {
     id: 'payableDays', category: 'efficiency', name: '仕入債務回転日数', unit: '日',
+    averageable: true,
     formula: '仕入債務 ÷ 売上原価 × 365',
     guide: '仕入代金の支払までの日数。長いほど資金繰りは楽だが、急な短縮は取引条件悪化のサイン。',
     compute: payableDays,
   },
   {
     id: 'ccc', category: 'efficiency', name: 'CCC（キャッシュ・コンバージョン・サイクル）', unit: '日',
+    averageable: true,
     formula: '売上債権回転日数 + 棚卸資産回転日数 − 仕入債務回転日数',
     guide: '仕入の支払から売上の回収までに資金が寝る日数。短いほど運転資金負担が小さい。',
     compute: (ctx) => {
@@ -249,13 +255,33 @@ function toCtx(period) {
   return { pl: period?.pl ?? {}, bs: period?.bs ?? {} };
 }
 
+export const BASES = [
+  { id: 'end', name: '期末残高' },
+  { id: 'average', name: '平均残高' },
+];
+
+// 平均残高 = (前期末 + 当期末) ÷ 2。どちらかが未入力、または前期がなければ null。
+export function averageBs(bs = {}, prevBs) {
+  const o = {};
+  for (const f of BS_FIELDS) {
+    const s = prevBs ? sumOf(bs[f.key], prevBs[f.key]) : null;
+    o[f.key] = isNum(s) ? s / 2 : null;
+  }
+  return o;
+}
+
 // 全指標を計算する。戻り値：{ [id]: { value: number|null, status: 'ok'|'na'|'notApplicable' } }
-export function calcIndicators(period) {
-  const ctx = toCtx(period);
-  const insolvent = isInsolvent(ctx.bs);
+// options.basis = 'end'（既定。期末残高）| 'average'（平均残高。averageable な指標のみ）
+// options.prevPeriod = 平均残高の計算に使う前期
+export function calcIndicators(period, options = {}) {
+  const endCtx = toCtx(period);
+  const avgCtx = options.basis === 'average'
+    ? { pl: endCtx.pl, bs: averageBs(endCtx.bs, options.prevPeriod?.bs) }
+    : null;
   const results = {};
   for (const ind of INDICATORS) {
-    if ((ind.insolventNA && insolvent) || (ind.notApplicable && ind.notApplicable(ctx))) {
+    const ctx = avgCtx && ind.averageable ? avgCtx : endCtx;
+    if ((ind.insolventNA && isInsolvent(ctx.bs)) || (ind.notApplicable && ind.notApplicable(ctx))) {
       results[ind.id] = { value: null, status: 'notApplicable' };
       continue;
     }
@@ -322,9 +348,9 @@ export function formatValue(result, unit) {
   return `${formatNumber(result.value, DIGITS[unit] ?? 2)}${unit}`;
 }
 
-// 「結果をテキストでコピー」用の本文
-export function buildResultText(data, results, warnings = []) {
-  const period = data?.periods?.[0];
+// 「結果をテキストでコピー」用の本文（periodIndex の期。既定は先頭の期）
+export function buildResultText(data, results, warnings = [], periodIndex = 0) {
+  const period = data?.periods?.[periodIndex];
   const lines = [];
   lines.push(`【財務分析結果】${data?.companyName || '（会社名未入力）'} ${period?.label || ''}`.trim());
   lines.push('（金額単位：千円、期末残高ベース）');
@@ -341,4 +367,88 @@ export function buildResultText(data, results, warnings = []) {
     }
   }
   return lines.join('\n');
+}
+
+// ---- 複数期比較 ----
+
+export const MAX_PERIODS = 5;
+
+// 比較表の先頭に載せる金額行
+export const KEY_AMOUNTS = [
+  { id: 'sales', name: '売上高', get: ({ pl }) => pl.sales },
+  { id: 'grossProfit', name: '売上総利益', get: ({ pl }) => diff(pl.sales, pl.costOfSales) },
+  { id: 'operatingIncome', name: '営業利益', get: ({ pl }) => pl.operatingIncome },
+  { id: 'ordinaryIncome', name: '経常利益', get: ({ pl }) => pl.ordinaryIncome },
+  { id: 'netIncome', name: '当期純利益', get: ({ pl }) => pl.netIncome },
+  { id: 'totalAssets', name: '総資産', get: ({ bs }) => bs.totalAssets },
+  { id: 'netAssets', name: '純資産', get: ({ bs }) => bs.netAssets },
+];
+
+// 推移グラフの対象（比較表の行 id）
+export const CHART_ROWS = ['sales', 'operatingIncome', 'ebitda', 'operatingMargin', 'equityRatio'];
+
+// 前期比。amount = 当期 − 前期。rate = (当期 − 前期) ÷ 前期。
+// 前期が0 → rate は 'na'（—）、前期がマイナス → rate は 'notApplicable'（参考外）。
+export function changeOf(curr, prev) {
+  if (!isNum(curr) || !isNum(prev)) return { amount: null, rate: null, rateStatus: 'na' };
+  const amount = curr - prev;
+  if (prev === 0) return { amount, rate: null, rateStatus: 'na' };
+  if (prev < 0) return { amount, rate: null, rateStatus: 'notApplicable' };
+  return { amount, rate: amount / prev, rateStatus: 'ok' };
+}
+
+function signed(text, v) {
+  return v > 0 && text !== '0' && !/^0[.,]?0*$/.test(text) ? `+${text}` : text;
+}
+
+// 増減額の表示。% の指標はポイント（pt）で表示する。
+export function formatChangeAmount(change, unit) {
+  if (!change || !isNum(change.amount)) return '—';
+  const v = change.amount;
+  if (unit === '%') return `${signed(formatNumber(v * 100, 1), v)}pt`;
+  if (unit === '千円') return `${signed(formatNumber(v, 0), v)}千円`;
+  return `${signed(formatNumber(v, DIGITS[unit] ?? 2), v)}${unit}`;
+}
+
+export function formatChangeRate(change) {
+  if (!change || change.rateStatus === 'na') return '—';
+  if (change.rateStatus === 'notApplicable') return '参考外';
+  return `${signed(formatNumber(change.rate * 100, 1), change.rate)}%`;
+}
+
+function amountResult(v) {
+  return isNum(v) ? { value: v, status: 'ok' } : { value: null, status: 'na' };
+}
+
+// 比較表のデータを作る。
+// 戻り値：{ labels: [期名], rows: [{ id, name, unit, group, averageable, cells: [{ result, change }] }] }
+// change は先頭の期では null。
+export function buildComparison(data, basis = 'end') {
+  const periods = data?.periods ?? [];
+  const perPeriod = periods.map((p, i) => calcIndicators(p, { basis, prevPeriod: periods[i - 1] }));
+  const makeCells = (getResult) => {
+    const results = periods.map((p, i) => getResult(p, i));
+    return results.map((result, i) => ({
+      result,
+      change: i === 0 ? null : changeOf(
+        result.status === 'ok' ? result.value : null,
+        results[i - 1].status === 'ok' ? results[i - 1].value : null,
+      ),
+    }));
+  };
+  const rows = [];
+  for (const a of KEY_AMOUNTS) {
+    rows.push({
+      id: a.id, name: a.name, unit: '千円', group: 'amounts', averageable: false,
+      cells: makeCells((p) => amountResult(a.get(toCtx(p)))),
+    });
+  }
+  for (const ind of INDICATORS) {
+    rows.push({
+      id: ind.id, name: ind.name, unit: ind.unit, group: ind.category,
+      averageable: Boolean(ind.averageable),
+      cells: makeCells((p, i) => perPeriod[i][ind.id]),
+    });
+  }
+  return { labels: periods.map((p) => p.label), rows };
 }

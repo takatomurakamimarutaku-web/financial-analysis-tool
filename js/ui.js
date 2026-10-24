@@ -1,15 +1,24 @@
 // 画面描画とイベント処理
 import {
-  PL_FIELDS, BS_FIELDS, CATEGORIES, INDICATORS,
+  PL_FIELDS, BS_FIELDS, CATEGORIES, INDICATORS, MAX_PERIODS, CHART_ROWS,
   calcIndicators, getWarnings, formatValue, buildResultText, parseAmount, isNum,
+  buildComparison, formatChangeAmount, formatChangeRate,
 } from './calc.js';
-import { loadData, saveData, createEmptyData, getSampleData } from './store.js';
+import {
+  loadData, saveData, createEmptyData, getSampleMultiData,
+  addPeriod, removePeriod, movePeriod,
+} from './store.js';
+import { buildLineChartSvg } from './chart.js';
 
 const SAVE_DELAY_MS = 300;
 
 const state = {
   data: createEmptyData(),
   storageError: null,
+  selected: 0, // 入力タブで選択中の期
+  view: 'input',
+  basis: 'end',
+  showChange: true,
 };
 
 let saveTimer = null;
@@ -17,7 +26,7 @@ let saveTimer = null;
 const $ = (id) => document.getElementById(id);
 
 function currentPeriod() {
-  return state.data.periods[0];
+  return state.data.periods[state.selected];
 }
 
 function el(tag, attrs = {}, children = []) {
@@ -37,6 +46,12 @@ function formatInput(v) {
   return v.toLocaleString('ja-JP', { maximumFractionDigits: 10 });
 }
 
+function periodName(p, i) {
+  return p.label || `第${i + 1}期`;
+}
+
+// ---- 保存 ----
+
 function scheduleSave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveNow, SAVE_DELAY_MS);
@@ -44,11 +59,16 @@ function scheduleSave() {
 
 function saveNow() {
   clearTimeout(saveTimer);
+  saveTimer = null;
   const { ok, error } = saveData(state.data);
-  const changed = state.storageError !== (ok ? null : error);
-  state.storageError = ok ? null : error;
-  if (changed) renderWarnings();
+  const next = ok ? null : error;
+  if (state.storageError !== next) {
+    state.storageError = next;
+    renderGlobalWarnings();
+  }
 }
+
+// ---- 入力タブ ----
 
 function renderAmountFields(containerId, section, fields) {
   const container = $(containerId);
@@ -83,9 +103,34 @@ function renderAmountFields(containerId, section, fields) {
   }
 }
 
+function renderPeriodBar() {
+  const box = $('periodChips');
+  box.replaceChildren();
+  state.data.periods.forEach((p, i) => {
+    const chip = el('button', {
+      type: 'button',
+      className: 'chip',
+      role: 'tab',
+      'aria-selected': String(i === state.selected),
+      text: periodName(p, i),
+    });
+    chip.addEventListener('click', () => selectPeriod(i));
+    box.append(chip);
+  });
+  const full = state.data.periods.length >= MAX_PERIODS;
+  const add = el('button', { type: 'button', className: 'chip chip-add', text: full ? '上限5期' : '＋ 期を追加' });
+  if (full) add.disabled = true;
+  add.addEventListener('click', onAddPeriod);
+  box.append(add);
+
+  $('periodLabel').value = currentPeriod().label;
+  $('btnMoveLeft').disabled = state.selected === 0;
+  $('btnMoveRight').disabled = state.selected === state.data.periods.length - 1;
+}
+
 function renderForm() {
   $('companyName').value = state.data.companyName;
-  $('periodLabel').value = currentPeriod().label;
+  renderPeriodBar();
   renderAmountFields('plFields', 'pl', PL_FIELDS);
   renderAmountFields('bsFields', 'bs', BS_FIELDS);
 }
@@ -119,18 +164,63 @@ function toggleSign(section, key, input) {
   update();
 }
 
-function renderWarnings() {
+function selectPeriod(i) {
+  state.selected = i;
+  renderForm();
+  renderInputResults();
+}
+
+function onAddPeriod() {
+  const next = addPeriod(state.data);
+  if (next === state.data) return;
+  state.data = next;
+  state.selected = next.periods.length - 1;
+  renderForm();
+  update();
+}
+
+function onRemovePeriod() {
+  const p = currentPeriod();
+  if (!window.confirm(`「${periodName(p, state.selected)}」を削除します。よろしいですか？`)) return;
+  state.data = removePeriod(state.data, state.selected);
+  state.selected = Math.min(state.selected, state.data.periods.length - 1);
+  renderForm();
+  update();
+}
+
+function onMovePeriod(delta) {
+  const next = movePeriod(state.data, state.selected, delta);
+  if (next === state.data) return;
+  state.data = next;
+  state.selected += delta;
+  renderPeriodBar();
+  update();
+}
+
+function renderInputWarnings() {
   const box = $('warnings');
   box.replaceChildren();
-  if (state.storageError) {
-    box.append(el('div', { className: 'warning error', text: state.storageError }));
-  }
   for (const w of getWarnings(currentPeriod())) {
     box.append(el('div', { className: 'warning', text: w.message }));
   }
 }
 
-function renderResults() {
+function renderGlobalWarnings() {
+  const box = $('warnings-global');
+  box.replaceChildren();
+  if (state.storageError) {
+    box.append(el('div', { className: 'warning error', text: state.storageError }));
+  }
+}
+
+function valueClass(base, r) {
+  const c = [base];
+  if (!r || r.status !== 'ok') c.push('na');
+  else if (r.value < 0) c.push('negative');
+  return c.join(' ');
+}
+
+function renderInputResults() {
   const results = calcIndicators(currentPeriod());
   const box = $('results');
   box.replaceChildren();
@@ -138,13 +228,10 @@ function renderResults() {
     const card = el('section', { className: 'panel category' }, [el('h2', { text: cat.name })]);
     for (const ind of INDICATORS.filter((i) => i.category === cat.id)) {
       const r = results[ind.id];
-      const valueClass = ['indicator-value'];
-      if (r.status !== 'ok') valueClass.push('na');
-      else if (r.value < 0) valueClass.push('negative');
       const details = el('details', { className: 'indicator' }, [
         el('summary', {}, [
           el('span', { className: 'indicator-name', text: ind.name }),
-          el('span', { className: valueClass.join(' '), text: formatValue(r, ind.unit) }),
+          el('span', { className: valueClass('indicator-value', r), text: formatValue(r, ind.unit) }),
         ]),
         el('dl', { className: 'indicator-detail' }, [
           el('dt', { text: '計算式' }),
@@ -159,22 +246,117 @@ function renderResults() {
   }
 }
 
+// ---- 比較タブ ----
+
+const GROUP_NAMES = { amounts: '主要数値（千円）', ...Object.fromEntries(CATEGORIES.map((c) => [c.id, c.name])) };
+
+function renderCompare() {
+  document.querySelectorAll('.seg').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.basis === state.basis)));
+  $('showChange').checked = state.showChange;
+  $('basisNote').textContent = state.basis === 'average'
+    ? '平均残高ベース：ROA・ROE・回転日数・CCC の BS 項目を (前期末 + 当期末) ÷ 2 で計算します（★印）。前期がない期は「—」。その他の指標は期末残高です。'
+    : '期末残高ベース：BS 項目は各期の期末残高を使います。';
+
+  const cmp = buildComparison(state.data, state.basis);
+  const table = $('compareTable');
+  table.replaceChildren();
+
+  const headRow = el('tr', {}, [el('th', { className: 'row-head', scope: 'col', text: '指標' })]);
+  cmp.labels.forEach((l, i) => headRow.append(el('th', { scope: 'col', text: l || `第${i + 1}期` })));
+  table.append(el('thead', {}, [headRow]));
+
+  const tbody = el('tbody');
+  let group = null;
+  for (const row of cmp.rows) {
+    if (row.group !== group) {
+      group = row.group;
+      tbody.append(el('tr', { className: 'group-row' }, [
+        el('th', { colspan: String(cmp.labels.length + 1), scope: 'colgroup' }, [el('span', { text: GROUP_NAMES[group] })]),
+      ]));
+    }
+    const head = el('th', { className: 'row-head', scope: 'row', text: row.name });
+    if (state.basis === 'average' && row.averageable) head.append(el('span', { className: 'avg-mark', text: '★' }));
+    const tr = el('tr', {}, [head]);
+    for (const cell of row.cells) {
+      const td = el('td', {}, [
+        el('span', {
+          className: valueClass('cell-value', cell.result),
+          text: row.unit === '千円' && row.group === 'amounts'
+            ? (isNum(cell.result.value) ? cell.result.value.toLocaleString('ja-JP', { maximumFractionDigits: 0 }) : '—')
+            : formatValue(cell.result, row.unit),
+        }),
+      ]);
+      if (state.showChange && cell.change) {
+        td.append(el('span', { className: 'cell-change', text: formatChangeAmount(cell.change, row.unit) }));
+        td.append(el('span', { className: 'cell-change', text: formatChangeRate(cell.change) }));
+      }
+      tr.append(td);
+    }
+    tbody.append(tr);
+  }
+  table.append(tbody);
+
+  renderCharts(cmp);
+}
+
+function tickFormatFor(unit) {
+  if (unit === '%') return (v) => `${Number((v * 100).toPrecision(6))}%`;
+  return (v) => v.toLocaleString('ja-JP', { maximumFractionDigits: 2 });
+}
+
+function renderCharts(cmp) {
+  const box = $('charts');
+  box.replaceChildren();
+  const labels = cmp.labels.map((l, i) => l || `第${i + 1}期`);
+  for (const id of CHART_ROWS) {
+    const row = cmp.rows.find((r) => r.id === id);
+    const values = row.cells.map((c) => (c.result.status === 'ok' ? c.result.value : null));
+    const svg = buildLineChartSvg({
+      labels,
+      values,
+      title: row.name,
+      format: (v) => formatValue({ value: v, status: 'ok' }, row.unit),
+      tickFormat: tickFormatFor(row.unit),
+    });
+    const card = el('div', { className: 'panel chart-card' }, [el('h3', { text: row.unit === '千円' ? `${row.name}（千円）` : row.name })]);
+    // svg は chart.js で全テキストをエスケープ済み
+    const holder = el('div');
+    holder.innerHTML = svg;
+    card.append(holder);
+    box.append(card);
+  }
+}
+
+// ---- 共通 ----
+
+function setView(view) {
+  state.view = view;
+  document.querySelectorAll('.tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.view === view)));
+  $('view-input').hidden = view !== 'input';
+  $('view-compare').hidden = view !== 'compare';
+  if (view === 'compare') renderCompare();
+  window.scrollTo(0, 0);
+}
+
 function update() {
-  renderWarnings();
-  renderResults();
+  renderInputWarnings();
+  renderInputResults();
+  if (state.view === 'compare') renderCompare();
   scheduleSave();
 }
 
 function hasAnyInput() {
-  const p = currentPeriod();
-  return Boolean(state.data.companyName || p.label)
-    || Object.values(p.pl).some(isNum)
-    || Object.values(p.bs).some(isNum);
+  return Boolean(state.data.companyName)
+    || state.data.periods.length > 1
+    || state.data.periods.some((p) => p.label
+      || Object.values(p.pl).some(isNum)
+      || Object.values(p.bs).some(isNum));
 }
 
 function onLoadSample() {
   if (hasAnyInput() && !window.confirm('入力中のデータをサンプルデータで上書きします。よろしいですか？')) return;
-  state.data = getSampleData();
+  state.data = getSampleMultiData();
+  state.selected = state.data.periods.length - 1;
   renderForm();
   update();
   saveNow();
@@ -182,8 +364,9 @@ function onLoadSample() {
 }
 
 function onClear() {
-  if (!window.confirm('入力内容をすべてクリアします。よろしいですか？')) return;
+  if (!window.confirm('すべての期の入力内容をクリアします。よろしいですか？')) return;
   state.data = createEmptyData();
+  state.selected = 0;
   renderForm();
   update();
   saveNow();
@@ -215,9 +398,9 @@ async function copyText(text) {
 
 async function onCopy() {
   const p = currentPeriod();
-  const text = buildResultText(state.data, calcIndicators(p), getWarnings(p));
+  const text = buildResultText(state.data, calcIndicators(p), getWarnings(p), state.selected);
   const ok = await copyText(text);
-  showToast(ok ? '結果をコピーしました' : 'コピーできませんでした');
+  showToast(ok ? `${periodName(p, state.selected)}の結果をコピーしました` : 'コピーできませんでした');
 }
 
 let toastTimer = null;
@@ -233,9 +416,11 @@ function init() {
   const { data, error } = loadData();
   state.data = data;
   state.storageError = error;
+  state.selected = data.periods.length - 1;
   renderForm();
-  renderWarnings();
-  renderResults();
+  renderGlobalWarnings();
+  renderInputWarnings();
+  renderInputResults();
 
   $('companyName').addEventListener('input', (e) => {
     state.data.companyName = e.target.value;
@@ -243,11 +428,26 @@ function init() {
   });
   $('periodLabel').addEventListener('input', (e) => {
     currentPeriod().label = e.target.value;
+    // チップの表示だけ更新（入力欄のフォーカスを保つ）
+    const chip = $('periodChips').children[state.selected];
+    if (chip) chip.textContent = periodName(currentPeriod(), state.selected);
     scheduleSave();
   });
+  $('btnMoveLeft').addEventListener('click', () => onMovePeriod(-1));
+  $('btnMoveRight').addEventListener('click', () => onMovePeriod(1));
+  $('btnRemovePeriod').addEventListener('click', onRemovePeriod);
   $('btnSample').addEventListener('click', onLoadSample);
   $('btnClear').addEventListener('click', onClear);
   $('btnCopy').addEventListener('click', onCopy);
+  document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => setView(t.dataset.view)));
+  document.querySelectorAll('.seg').forEach((b) => b.addEventListener('click', () => {
+    state.basis = b.dataset.basis;
+    renderCompare();
+  }));
+  $('showChange').addEventListener('change', (e) => {
+    state.showChange = e.target.checked;
+    renderCompare();
+  });
   // 閉じる直前に未保存分を書き込む
   window.addEventListener('pagehide', () => { if (saveTimer) saveNow(); });
 }
