@@ -5,6 +5,8 @@
   "description": "iPhoneのブラウザで使える財務分析ツール（依存パッケージなし）",
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "check:pwa": "node scripts/check-pwa.js",
+    "build:icons": "node scripts/build-icons.cjs"
   }
 }

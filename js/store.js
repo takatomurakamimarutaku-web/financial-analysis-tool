@@ -203,3 +203,130 @@ export function renamePeriod(data, index, label) {
   const periods = data.periods.map((p, i) => (i === index ? { ...p, label: String(label) } : p));
   return { ...data, periods };
 }
+
+// ---- JSONバックアップ・復元 ----
+
+export const BACKUP_FORMAT = 'finAnalysisTool-backup';
+export const BACKUP_FORMAT_VERSION = 1;
+export const LAST_BACKUP_KEY = 'finAnalysisTool.lastBackupAt';
+export const BACKUP_REMINDER_DAYS = 30;
+
+const SUPPORTED_DATA_VERSIONS = [1];
+
+export function createBackup(data, now = new Date()) {
+  return {
+    format: BACKUP_FORMAT,
+    formatVersion: BACKUP_FORMAT_VERSION,
+    exportedAt: now.toISOString(),
+    data,
+  };
+}
+
+export function backupToJson(data, now = new Date()) {
+  return JSON.stringify(createBackup(data, now), null, 2);
+}
+
+export function backupFileName(now = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `fin-tool-backup-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.json`;
+}
+
+function checkFields(src, fields, where, errors) {
+  if (!isPlainObject(src)) {
+    errors.push(`${where} がありません`);
+    return;
+  }
+  for (const f of fields) {
+    const v = src[f.key];
+    if (v !== undefined && v !== null && !isNum(v)) errors.push(`${where}.${f.key} が数値ではありません`);
+  }
+}
+
+// データ本体の形式を検証する。問題があればエラーメッセージの配列を返す（空なら正常）。
+// normalizeData と違い、型の誤りを null に置き換えずにエラーとする。
+export function validateData(raw) {
+  const errors = [];
+  if (!isPlainObject(raw)) return ['データがオブジェクトではありません'];
+  if (!SUPPORTED_DATA_VERSIONS.includes(raw.version)) {
+    return [`対応していないデータのバージョンです（version: ${JSON.stringify(raw.version)}）`];
+  }
+  if (raw.companyName !== undefined && typeof raw.companyName !== 'string') errors.push('companyName が文字列ではありません');
+  if (!Array.isArray(raw.periods)) return [...errors, 'periods がありません'];
+  if (raw.periods.length < 1 || raw.periods.length > MAX_PERIODS) {
+    errors.push(`期の数が不正です（1〜${MAX_PERIODS}期）`);
+  }
+  raw.periods.forEach((p, i) => {
+    const where = `periods[${i}]`;
+    if (!isPlainObject(p)) {
+      errors.push(`${where} が不正です`);
+      return;
+    }
+    if (p.label !== undefined && typeof p.label !== 'string') errors.push(`${where}.label が文字列ではありません`);
+    checkFields(p.pl, PL_FIELDS, `${where}.pl`, errors);
+    checkFields(p.bs, BS_FIELDS, `${where}.bs`, errors);
+    for (const k of ['adjustments', 'debtLikeItems']) {
+      if (p[k] !== undefined && !Array.isArray(p[k])) errors.push(`${where}.${k} が配列ではありません`);
+    }
+  });
+  return errors;
+}
+
+// バックアップファイルの文字列を検証して読み込む。
+// 戻り値：{ ok: true, data, exportedAt } または { ok: false, error }
+export function parseBackup(text) {
+  if (typeof text !== 'string' || text.trim() === '') return { ok: false, error: 'ファイルが空です' };
+  let obj;
+  try {
+    obj = JSON.parse(text.replace(/^﻿/, ''));
+  } catch {
+    return { ok: false, error: 'JSON形式ではありません' };
+  }
+  if (!isPlainObject(obj) || obj.format !== BACKUP_FORMAT) {
+    return { ok: false, error: 'このツールのバックアップファイルではありません' };
+  }
+  if (obj.formatVersion !== BACKUP_FORMAT_VERSION) {
+    return { ok: false, error: `対応していないバックアップ形式です（formatVersion: ${JSON.stringify(obj.formatVersion)}）` };
+  }
+  const errors = validateData(obj.data);
+  if (errors.length) return { ok: false, error: `データの形式が正しくありません：${errors.slice(0, 3).join('、')}` };
+  const data = normalizeData(migrate(obj.data));
+  if (!data) return { ok: false, error: 'データを読み込めませんでした' };
+  return { ok: true, data, exportedAt: typeof obj.exportedAt === 'string' ? obj.exportedAt : null };
+}
+
+export function getLastBackupAt(storage = defaultStorage()) {
+  try {
+    const v = storage?.getItem(LAST_BACKUP_KEY);
+    if (!v) return null;
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? null : d;
+  } catch {
+    return null;
+  }
+}
+
+export function setLastBackupAt(date = new Date(), storage = defaultStorage()) {
+  try {
+    storage?.setItem(LAST_BACKUP_KEY, date.toISOString());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// 入力データがあり、最終バックアップから30日以上（または未実施）なら true
+export function needsBackupReminder(lastBackupAt, hasData, now = new Date()) {
+  if (!hasData) return false;
+  if (!(lastBackupAt instanceof Date) || Number.isNaN(lastBackupAt.getTime())) return true;
+  return now.getTime() - lastBackupAt.getTime() >= BACKUP_REMINDER_DAYS * 24 * 60 * 60 * 1000;
+}
+
+// 何か入力されているか
+export function hasAnyData(data) {
+  if (!data) return false;
+  return Boolean(data.companyName)
+    || data.periods.length > 1
+    || data.periods.some((p) => p.label
+      || Object.values(p.pl).some(isNum)
+      || Object.values(p.bs).some(isNum));
+}

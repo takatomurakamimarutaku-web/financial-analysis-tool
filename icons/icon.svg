@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- 背景は全面塗り（maskable 対応。図形は中央の安全領域内に収める） -->
+  <rect width="512" height="512" fill="#1f5fbf"/>
+  <!-- 基準線 -->
+  <rect x="148" y="352" width="216" height="8" rx="4" fill="#ffffff" opacity="0.55"/>
+  <!-- 棒グラフ -->
+  <rect x="160" y="282" width="44" height="64" rx="6" fill="#ffffff" opacity="0.7"/>
+  <rect x="234" y="240" width="44" height="106" rx="6" fill="#ffffff" opacity="0.85"/>
+  <rect x="308" y="196" width="44" height="150" rx="6" fill="#ffffff"/>
+  <!-- 推移線 -->
+  <polyline points="170,236 248,196 330,150" fill="none" stroke="#ffd166" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="330" cy="150" r="14" fill="#ffd166"/>
+</svg>

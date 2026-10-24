@@ -7,8 +7,11 @@ import {
 import {
   loadData, saveData, createEmptyData, getSampleMultiData,
   addPeriod, removePeriod, movePeriod,
+  backupToJson, backupFileName, parseBackup, getLastBackupAt, setLastBackupAt,
+  needsBackupReminder, hasAnyData,
 } from './store.js';
 import { buildLineChartSvg } from './chart.js';
+import { registerServiceWorker, requestPersistentStorage } from './pwa.js';
 
 const SAVE_DELAY_MS = 300;
 
@@ -341,16 +344,90 @@ function setView(view) {
 function update() {
   renderInputWarnings();
   renderInputResults();
+  renderBackupStatus();
   if (state.view === 'compare') renderCompare();
   scheduleSave();
 }
 
 function hasAnyInput() {
-  return Boolean(state.data.companyName)
-    || state.data.periods.length > 1
-    || state.data.periods.some((p) => p.label
-      || Object.values(p.pl).some(isNum)
-      || Object.values(p.bs).some(isNum));
+  return hasAnyData(state.data);
+}
+
+// ---- バックアップ・復元 ----
+
+function formatDateTime(d) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function renderBackupStatus() {
+  const last = getLastBackupAt();
+  $('lastBackup').textContent = last ? `最終バックアップ：${formatDateTime(last)}` : '最終バックアップ：未実施';
+  $('backupReminder').hidden = !needsBackupReminder(last, hasAnyInput());
+}
+
+function downloadFile(file) {
+  const url = URL.createObjectURL(file);
+  const a = el('a', { href: url, download: file.name });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+async function onExport() {
+  saveNow();
+  const now = new Date();
+  const file = new File([backupToJson(state.data, now)], backupFileName(now), { type: 'application/json' });
+  try {
+    // iPhone では共有シートから「"ファイル"に保存」できる
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: file.name });
+    } else {
+      downloadFile(file);
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') return; // 共有をキャンセルした
+    try {
+      downloadFile(file);
+    } catch {
+      showToast('バックアップを保存できませんでした');
+      return;
+    }
+  }
+  setLastBackupAt(now);
+  renderBackupStatus();
+  showToast('バックアップを作成しました');
+}
+
+function onImportClick() {
+  $('importFile').value = '';
+  $('importFile').click();
+}
+
+async function onImportFile(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  let text;
+  try {
+    text = await file.text();
+  } catch {
+    showToast('ファイルを読み込めませんでした');
+    return;
+  }
+  const result = parseBackup(text);
+  if (!result.ok) {
+    window.alert(`復元できませんでした。\n${result.error}`);
+    return;
+  }
+  const when = result.exportedAt ? `（${formatDateTime(new Date(result.exportedAt))} 作成）` : '';
+  if (!window.confirm(`バックアップ${when}で現在のデータを上書きします。よろしいですか？`)) return;
+  state.data = result.data;
+  state.selected = state.data.periods.length - 1;
+  renderForm();
+  update();
+  saveNow();
+  showToast('バックアップから復元しました');
 }
 
 function onLoadSample() {
@@ -421,6 +498,7 @@ function init() {
   renderGlobalWarnings();
   renderInputWarnings();
   renderInputResults();
+  renderBackupStatus();
 
   $('companyName').addEventListener('input', (e) => {
     state.data.companyName = e.target.value;
@@ -448,6 +526,20 @@ function init() {
     state.showChange = e.target.checked;
     renderCompare();
   });
+  $('btnExport').addEventListener('click', onExport);
+  $('btnImport').addEventListener('click', onImportClick);
+  $('importFile').addEventListener('change', onImportFile);
+
+  registerServiceWorker((apply) => {
+    $('updateBar').hidden = false;
+    $('btnUpdate').onclick = () => {
+      $('btnUpdate').disabled = true;
+      saveNow();
+      apply();
+    };
+  });
+  requestPersistentStorage();
+
   // 閉じる直前に未保存分を書き込む
   window.addEventListener('pagehide', () => { if (saveTimer) saveNow(); });
 }

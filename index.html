@@ -4,7 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="format-detection" content="telephone=no">
+  <meta name="theme-color" content="#1f5fbf">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <!-- default：ステータスバーを表示領域の外に出し、内容と重ならないようにする -->
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="財務分析">
   <title>財務分析ツール</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -48,6 +57,19 @@
           <button type="button" id="btnSample" class="btn">サンプルデータ読込</button>
           <button type="button" id="btnClear" class="btn btn-danger">クリア</button>
           <button type="button" id="btnCopy" class="btn btn-primary">結果をテキストでコピー</button>
+        </div>
+      </section>
+
+      <section class="panel backup" aria-label="バックアップ">
+        <div class="backup-head">
+          <span class="field-label">データのバックアップ</span>
+          <span id="lastBackup" class="backup-last"></span>
+        </div>
+        <p id="backupReminder" class="note backup-reminder" hidden>しばらくバックアップしていません。ホーム画面アプリの保存データは、iPhoneの空き容量不足などで消えることがあるため、ときどきバックアップしておくと安心です。</p>
+        <div class="actions">
+          <button type="button" id="btnExport" class="btn">バックアップを保存</button>
+          <button type="button" id="btnImport" class="btn">バックアップから復元</button>
+          <input type="file" id="importFile" accept="application/json,.json" hidden>
         </div>
       </section>
 
@@ -97,6 +119,11 @@
       </section>
     </div>
   </main>
+
+  <div id="updateBar" class="update-bar" role="status" hidden>
+    <span>新しいバージョンがあります</span>
+    <button type="button" id="btnUpdate" class="btn btn-primary">更新</button>
+  </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 

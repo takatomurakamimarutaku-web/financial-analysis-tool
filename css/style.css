@@ -47,15 +47,21 @@ body {
   line-height: 1.5;
 }
 
+/* ノッチ・ホームバー・横向き時の左右の切り欠きを避ける */
 .app-header {
   padding: 16px 16px 8px;
   padding-top: max(16px, env(safe-area-inset-top));
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
 }
 .app-header h1 { margin: 0; font-size: 20px; }
 .app-note { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
 
 .app-main {
   padding: 0 16px 32px;
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+  padding-bottom: calc(32px + env(safe-area-inset-bottom));
   max-width: 1100px;
   margin: 0 auto;
 }
@@ -328,3 +334,31 @@ input[type="text"]:focus { outline: 2px solid var(--primary); outline-offset: -1
 @media (min-width: 900px) {
   .charts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
+/* ---- Phase 1.5：PWA（更新の案内・バックアップ） ---- */
+.update-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, .08);
+  font-size: 14px;
+}
+.update-bar[hidden] { display: none; }
+
+.backup-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; justify-content: space-between; }
+.backup-head .field-label { margin: 0; font-weight: 600; color: var(--text); }
+.backup-last { font-size: 13px; color: var(--muted); }
+.backup .actions { margin-top: 8px; }
+.backup-reminder { color: var(--warn-text); }
