@@ -11,6 +11,21 @@ export const AMOUNT_UNITS = [
   { id: 'million', name: '百万円', scale: 0.001, digits: 1 },
 ];
 
+// 金額の単位を設定できる区分。区分ごとに入力・表示の単位を選べる。
+export const UNIT_SCOPES = [
+  { id: 'pl', name: 'PL入力', note: '損益計算書の入力欄' },
+  { id: 'bs', name: 'BS入力', note: '貸借対照表の入力欄・貸借不一致の警告' },
+  { id: 'ebitda', name: '正常化EBITDA', note: '調整項目の入力・EBITDAブリッジ（入力タブ・比較タブ）' },
+  { id: 'netDebt', name: '運転資本・ネットデット', note: 'デットライク・キャッシュライク項目の入力・運転資本・ネットデットの表' },
+  { id: 'compare', name: '分析結果・比較表・グラフ', note: '入力タブの分析結果、比較表、推移グラフ、結果テキストのコピー' },
+  { id: 'report', name: '印刷用レポート・CSV', note: 'レポートと3種類のCSV' },
+];
+const SCOPE_IDS = UNIT_SCOPES.map((x) => x.id);
+
+function unitsAll(unit) {
+  return Object.fromEntries(SCOPE_IDS.map((k) => [k, unit]));
+}
+
 export const DIGIT_LIMITS = { pct: [0, 3], days: [0, 2], times: [0, 3] };
 export const BACKUP_REMINDER_CHOICES = [0, 7, 14, 30, 60, 90]; // 0 = 案内しない
 
@@ -42,7 +57,7 @@ export function standardLabel(key) {
 
 export function createDefaultSettings() {
   return {
-    unit: 'thousand',
+    units: unitsAll('thousand'),
     accounts: {
       pl: PL_FIELDS.map((f) => ({ key: f.key, label: '', hidden: false })),
       bs: BS_FIELDS.map((f) => ({ key: f.key, label: '', hidden: false })),
@@ -107,8 +122,12 @@ export function normalizeSettings(raw) {
       if (CATEGORY_IDS.has(k) && typeof v === 'string' && v.trim()) names[k] = v;
     }
   }
+  // 旧形式（version 4 の unit：全体で1つ）も受け付ける
+  const fallback = AMOUNT_UNITS.some((u) => u.id === raw.unit) ? raw.unit : 'thousand';
+  const rawUnits = isPlainObject(raw.units) ? raw.units : {};
+  const units = Object.fromEntries(SCOPE_IDS.map((k) => [k, AMOUNT_UNITS.some((u) => u.id === rawUnits[k]) ? rawUnits[k] : fallback]));
   return {
-    unit: AMOUNT_UNITS.some((u) => u.id === raw.unit) ? raw.unit : d.unit,
+    units,
     accounts: {
       pl: normalizeStandardList(acc.pl, PL_FIELDS),
       bs: normalizeStandardList(acc.bs, BS_FIELDS),
@@ -131,8 +150,22 @@ export function normalizeSettings(raw) {
 
 // ---- 表示単位・桁数 ----
 
-export function unitOf(settings) {
-  return AMOUNT_UNITS.find((u) => u.id === settings?.unit) ?? AMOUNT_UNITS[1];
+// 区分（scope）の単位。不明な区分・設定なしは千円
+export function unitOf(settings, scope = 'compare') {
+  return AMOUNT_UNITS.find((u) => u.id === settings?.units?.[scope]) ?? AMOUNT_UNITS[1];
+}
+
+// すべての区分が同じ単位ならその単位、そうでなければ null
+export function commonUnit(settings) {
+  const ids = new Set(SCOPE_IDS.map((k) => unitOf(settings, k).id));
+  return ids.size === 1 ? AMOUNT_UNITS.find((u) => ids.has(u.id)) : null;
+}
+
+export function setUnit(settings, scope, unit) {
+  if (!AMOUNT_UNITS.some((u) => u.id === unit)) return settings;
+  if (scope === 'all') return { ...settings, units: unitsAll(unit) };
+  if (!SCOPE_IDS.includes(scope)) return settings;
+  return { ...settings, units: { ...settings.units, [scope]: unit } };
 }
 
 // 浮動小数点の誤差（1.234 * 1000 = 1233.9999999999998 など）だけを取り除く。丸めではない。
@@ -140,19 +173,19 @@ function clean(v) {
   return Number(v.toPrecision(12));
 }
 
-// 内部値（千円）→ 表示単位の値
-export function toDisplayAmount(v, settings) {
-  return isNum(v) ? clean(v * unitOf(settings).scale) : null;
+// 内部値（千円）→ 区分の単位の値
+export function toDisplayAmount(v, settings, scope) {
+  return isNum(v) ? clean(v * unitOf(settings, scope).scale) : null;
 }
 
-// 表示単位で入力された値 → 内部値（千円）
-export function fromDisplayAmount(v, settings) {
-  return isNum(v) ? clean(v / unitOf(settings).scale) : null;
+// 区分の単位で入力された値 → 内部値（千円）
+export function fromDisplayAmount(v, settings, scope) {
+  return isNum(v) ? clean(v / unitOf(settings, scope).scale) : null;
 }
 
-// calc.js の formatAmount / formatValue / formatChangeAmount に渡す表示オプション
-export function formatOptions(settings) {
-  const u = unitOf(settings);
+// calc.js の formatAmount / formatValue / formatChangeAmount に渡す表示オプション（区分の単位を使う）
+export function formatOptions(settings, scope) {
+  const u = unitOf(settings, scope);
   const s = settings ?? createDefaultSettings();
   return {
     amountScale: u.scale,

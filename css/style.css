@@ -383,7 +383,7 @@ input[type="text"]:focus { outline: 2px solid var(--primary); outline-offset: -1
 .adj-item.warn { border-color: var(--warn-border); }
 .adj-amount { display: grid; grid-template-columns: minmax(0, 12em) 40px; gap: 6px; align-items: center; }
 .adj-amount input { text-align: right; }
-.adj-item select, .adj-item textarea {
+.adj-item select, .adj-item textarea, .settings-page select {
   width: 100%;
   font-size: 16px;
   padding: 8px 10px;
@@ -559,3 +559,8 @@ input[type="text"]:focus { outline: 2px solid var(--primary); outline-offset: -1
 .about-list dd { margin: 0; overflow-wrap: anywhere; }
 
 .section-nav[hidden] { display: none; }
+
+.unit-tag { margin-left: 8px; font-size: 12px; font-weight: normal; color: var(--muted); }
+.unit-field { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 9em); gap: 2px 8px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.unit-field-name { font-size: 15px; }
+.unit-field-note { grid-column: 1 / -1; margin: 0; }

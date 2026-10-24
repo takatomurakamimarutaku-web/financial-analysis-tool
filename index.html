@@ -19,7 +19,7 @@
 <body>
   <header class="app-header">
     <h1>財務分析ツール</h1>
-    <p class="app-note">金額単位：<span class="unit-name">千円</span> ／ データはこの端末のブラウザ内にのみ保存されます</p>
+    <p class="app-note">金額単位：<span class="unit-name" data-scope="all">千円</span> ／ データはこの端末のブラウザ内にのみ保存されます</p>
   </header>
 
   <!-- 画面上部に固定するナビゲーション（タブ＋項目へのジャンプ） -->
@@ -85,11 +85,11 @@
       <div class="layout">
         <section class="inputs" aria-label="入力">
           <details id="sec-pl" class="panel input-group" open>
-            <summary>損益計算書（PL）</summary>
+            <summary>損益計算書（PL）<span class="unit-tag">単位：<span class="unit-name" data-scope="pl">千円</span></span></summary>
             <div id="plFields" class="field-list"></div>
           </details>
           <details id="sec-bs" class="panel input-group" open>
-            <summary>貸借対照表（BS）</summary>
+            <summary>貸借対照表（BS）<span class="unit-tag">単位：<span class="unit-name" data-scope="bs">千円</span></span></summary>
             <div id="bsFields" class="field-list"></div>
           </details>
         </section>
@@ -164,14 +164,14 @@
       </section>
 
       <section id="sec-bridge" class="panel" aria-label="EBITDAブリッジ">
-        <h2 class="panel-title">EBITDAブリッジ（<span class="unit-name">千円</span>）</h2>
+        <h2 class="panel-title">EBITDAブリッジ（<span class="unit-name" data-scope="ebitda">千円</span>）</h2>
         <div class="table-scroll" tabindex="0" aria-label="EBITDAブリッジ（横にスクロールできます）">
           <table id="bridgeTable" class="compare-table bridge-compare"></table>
         </div>
       </section>
 
       <section id="sec-wc" class="panel" aria-label="運転資本の推移">
-        <h2 class="panel-title">運転資本の推移（<span class="unit-name">千円</span>）</h2>
+        <h2 class="panel-title">運転資本の推移（<span class="unit-name" data-scope="netDebt">千円</span>）</h2>
         <div class="table-scroll" tabindex="0" aria-label="運転資本の推移（横にスクロールできます）">
           <table id="wcTable" class="compare-table bridge-compare"></table>
         </div>
@@ -179,7 +179,7 @@
       </section>
 
       <section id="sec-ndb" class="panel" aria-label="ネットデット内訳">
-        <h2 class="panel-title">ネットデット内訳（<span class="unit-name">千円</span>）</h2>
+        <h2 class="panel-title">ネットデット内訳（<span class="unit-name" data-scope="netDebt">千円</span>）</h2>
         <div class="table-scroll" tabindex="0" aria-label="ネットデット内訳（横にスクロールできます）">
           <table id="ndTable" class="compare-table bridge-compare"></table>
         </div>

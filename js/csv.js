@@ -1,6 +1,6 @@
 // CSV出力（DOMに依存しない純粋関数）
 // Excel で文字化けしないよう、BOM 付き UTF-8・改行は CRLF で出力する。
-// 金額は設定の表示単位（data.settings.unit。既定は千円）で出力する。
+// 金額は設定の「印刷用レポート・CSV」の単位（既定は千円）で出力する。
 import {
   isNum, buildComparison, buildEbitdaBridge, buildNetDebtBreakdown, categoryName, CATEGORIES,
 } from './calc.js';
@@ -70,7 +70,7 @@ function periodLabels(data) {
 // 比較表 CSV。列：区分, 指標, 単位, 各期の値, 2期目以降の 増減額・増減率(%)
 export function buildComparisonCsv(data, basis = 'end') {
   const cmp = buildComparison(data, basis);
-  const u = unitOf(data?.settings);
+  const u = unitOf(data?.settings, 'report');
   const labels = periodLabels(data);
   const header = ['区分', '指標', '単位', ...labels];
   labels.slice(1).forEach((l) => header.push(`${l} 増減額`, `${l} 増減率(%)`));
@@ -92,7 +92,7 @@ export function buildComparisonCsv(data, basis = 'end') {
 // EBITDAブリッジ CSV。上段：ブリッジ表、下段：調整項目の明細（根拠メモを含む）
 export function buildBridgeCsv(data) {
   const b = buildEbitdaBridge(data);
-  const u = unitOf(data?.settings);
+  const u = unitOf(data?.settings, 'report');
   const labels = periodLabels(data);
   const rows = [['項目', '単位', ...labels]];
   for (const r of b.rows) {
@@ -114,7 +114,7 @@ export function buildBridgeCsv(data) {
 // ネットデット内訳 CSV。上段：内訳表、下段：デットライク・キャッシュライク項目の明細
 export function buildNetDebtCsv(data) {
   const b = buildNetDebtBreakdown(data);
-  const u = unitOf(data?.settings);
+  const u = unitOf(data?.settings, 'report');
   const amt = (v) => (isNum(v) ? scaled(v, '千円', u.scale) : '');
   const labels = periodLabels(data);
   const rows = [['項目', ...labels]];

@@ -118,7 +118,7 @@ iPhone のブラウザで使える財務分析ツールです。HTML / CSS / Jav
   - ファイル名：`fin-tool-comparison-YYYY-MM-DD.csv` など（英数字のみ）
 - 印刷用レポート（A4縦）：会社名・対象期・作成日・主要指標・EBITDAブリッジ・正常化調整の明細・ネットデット内訳・運転資本・警告・注記
   - iPhone：レポート画面の「印刷・PDF保存」→ 共有ボタン →「"ファイル"に保存」でPDF保存
-- JSON バックアップ・復元（Phase 1.5 で実装済み。データ version 1〜4 を読み込み、最新形式へ移行）
+- JSON バックアップ・復元（Phase 1.5 で実装済み。データ version 1〜5 を読み込み、最新形式へ移行）
 - 「すべてのデータを削除」：確認ダイアログを経て、入力データと最終バックアップ日時をこの端末から削除
 
 ### Phase 6：設定ページ
@@ -127,7 +127,7 @@ iPhone のブラウザで使える財務分析ツールです。HTML / CSS / Jav
 
 | 設定 | 内容 |
 | --- | --- |
-| 表示単位 | 円／千円／百万円。**内部の金額は常に千円**で、入力・表示・CSV・レポートのときだけ換算（百万円は小数第1位まで表示）。切り替えても保存済みの金額は変わらない |
+| 金額の単位 | 円／千円／百万円を**区分ごと**に選択（PL入力、BS入力、正常化EBITDA、運転資本・ネットデット、分析結果・比較表・グラフ、印刷用レポート・CSV の6区分。「すべて円」などでまとめて変更も可）。**内部の金額は常に千円**で、入力・表示のときだけ換算（百万円は小数第1位まで表示）。切り替えても保存済みの金額は変わらない |
 | PL科目・BS科目 | 並び替え（↑↓）、表示名の変更（空欄で標準名に戻る）、表示/非表示、内訳科目の追加・削除・並び替え・名称変更 |
 | 指標の表示・並び順 | 指標ごとの表示/非表示と、区分内の並び順。入力タブの分析結果・比較表・比較表CSV・結果テキストに反映（印刷用レポートは常に主要指標を掲載） |
 | 分析の基本設定 | 回転日数の1年の日数（365日／360日）、比較タブの計算基準の初期値（期末残高／平均残高） |
@@ -211,11 +211,11 @@ iPhone のブラウザで使える財務分析ツールです。HTML / CSS / Jav
 | scripts/build-icons.cjs | アイコン PNG の生成スクリプト（開発用） |
 | test/*.test.js | テスト（`node --test`） |
 
-### データ形式（version 4）
+### データ形式（version 5）
 
 ```json
 {
-  "version": 4,
+  "version": 5,
   "companyName": "",
   "periods": [
     { "label": "2025/3期", "pl": { "sales": null, "...": null }, "bs": { "cash": null, "...": null },
@@ -227,7 +227,7 @@ iPhone のブラウザで使える財務分析ツールです。HTML / CSS / Jav
       "details": { "c-…": 3000 } }
   ],
   "settings": {
-    "unit": "thousand",
+    "units": { "pl": "thousand", "bs": "thousand", "ebitda": "thousand", "netDebt": "thousand", "compare": "thousand", "report": "thousand" },
     "accounts": {
       "pl": [ { "key": "sales", "label": "", "hidden": false }, "…" ],
       "bs": [ { "key": "cash", "label": "", "hidden": false }, "…" ],
@@ -251,6 +251,7 @@ iPhone のブラウザで使える財務分析ツールです。HTML / CSS / Jav
 | 1 → 2 | 調整項目を `{ id, category, description, amount, memo }` の形にそろえる（Phase 3） | `migrateV1toV2`（js/store.js） |
 | 2 → 3 | キャッシュライク項目 `cashLikeItems` を追加し、デットライク項目を `{ id, name, amount, memo }` の形にそろえる（Phase 4） | `migrateV2toV3`（js/store.js） |
 | 3 → 4 | 設定 `settings` を既定値で追加し、各期に内訳科目の値 `details` を追加（既存の金額・計算結果は変わらない）（Phase 6） | `migrateV3toV4`（js/store.js） |
+| 4 → 5 | 金額の単位を全体で1つ（`settings.unit`）から区分ごと（`settings.units`）に変更。旧設定の単位を全区分に引き継ぐ | `migrateV4toV5`（js/store.js） |
 
 保存データ・バックアップファイルとも、読み込み時に自動で最新の version に移行します。
 

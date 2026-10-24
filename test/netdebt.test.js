@@ -204,17 +204,17 @@ describe('データ移行 version 2 → 3', () => {
     assert.equal(d.periods[0].debtLikeItems[0].memo, '');
     assert.equal(typeof d.periods[0].debtLikeItems[0].id, 'string');
   });
-  test('migrate は v1 → v2 → v3 → v4 と順に移行する', () => {
+  test('migrate は v1 → v2 → v3 → v4 → v5 と順に移行する', () => {
     const v1 = { version: 1, periods: [{ label: '', pl: {}, bs: {}, adjustments: [], debtLikeItems: [] }] };
     const d = normalizeData(migrate(v1));
     assert.equal(d.version, CURRENT_VERSION);
-    assert.equal(CURRENT_VERSION, 4);
+    assert.equal(CURRENT_VERSION, 5);
     assert.deepEqual(d.periods[0].cashLikeItems, []);
   });
   test('v2 のバックアップを復元でき、調整後ネットデット = ネットデット', () => {
     const r = parseBackup(JSON.stringify({ format: 'finAnalysisTool-backup', formatVersion: 1, exportedAt: null, data: v2() }));
     assert.equal(r.ok, true);
-    assert.equal(r.data.version, 4);
+    assert.equal(r.data.version, 5);
     assert.equal(calcAdjustedNetDebt(r.data.periods[0]).adjusted, 20);
   });
   test('v3 バックアップの往復・不正な項目の拒否', () => {

@@ -5,14 +5,14 @@ import {
   formatOptions, accountLabel, accountTree, renameAccount, setAccountHidden, moveAccount,
   addCustomAccount, removeCustomAccount, setDetailValue, isComputedAccount, applyAccountTotals,
   indicatorList, setIndicatorHidden, moveIndicator, arrangeComparisonRows, rowLabel,
-  categoryLabel, renameCategory, updateSettings, OTHER_DETAIL_LABEL, MAX_CUSTOM_ACCOUNTS,
+  categoryLabel, renameCategory, updateSettings, setUnit, commonUnit, UNIT_SCOPES, OTHER_DETAIL_LABEL, MAX_CUSTOM_ACCOUNTS,
 } from '../js/settings.js';
 import {
   INDICATORS, PL_FIELDS, BS_FIELDS, formatAmount, formatValue, formatChangeAmount, formatChangeRate,
   calcIndicators, buildComparison, buildEbitdaBridge, getWarnings, buildResultText, formulaText, changeOf,
 } from '../js/calc.js';
 import {
-  getSampleData, getSampleMultiData, createEmptyData, normalizeData, migrate, migrateV3toV4,
+  getSampleData, getSampleMultiData, createEmptyData, normalizeData, migrate, migrateV3toV4, migrateV4toV5,
   parseBackup, backupToJson, needsBackupReminder, hasAnyData, CURRENT_VERSION,
 } from '../js/store.js';
 import { buildComparisonCsv, buildBridgeCsv, buildNetDebtCsv } from '../js/csv.js';
@@ -22,7 +22,7 @@ const S = createDefaultSettings;
 describe('既定の設定と正規化', () => {
   test('既定値：千円・全科目表示・365日・期末残高・桁数 1/1/2・リマインド30日', () => {
     const s = S();
-    assert.equal(s.unit, 'thousand');
+    assert.deepEqual(s.units, { pl: 'thousand', bs: 'thousand', ebitda: 'thousand', netDebt: 'thousand', compare: 'thousand', report: 'thousand' });
     assert.equal(s.accounts.pl.length, PL_FIELDS.length);
     assert.equal(s.accounts.bs.length, BS_FIELDS.length);
     assert.deepEqual(s.accounts.custom, []);
@@ -49,7 +49,7 @@ describe('既定の設定と正規化', () => {
       backupReminderDays: -1,
       adjustmentCategoryNames: { oneTime: '非経常', zzz: 'x', other: '  ' },
     });
-    assert.equal(s.unit, 'thousand');
+    assert.deepEqual(s.units, { pl: 'thousand', bs: 'thousand', ebitda: 'thousand', netDebt: 'thousand', compare: 'thousand', report: 'thousand' });
     assert.equal(s.accounts.pl[0].key, 'sga');
     assert.equal(s.accounts.pl[0].hidden, true);
     assert.equal(s.accounts.pl.length, PL_FIELDS.length);
@@ -67,8 +67,8 @@ describe('既定の設定と正規化', () => {
 
 describe('表示単位', () => {
   test('円・千円・百万円の換算（内部は千円）', () => {
-    const yen = { ...S(), unit: 'yen' };
-    const mil = { ...S(), unit: 'million' };
+    const yen = setUnit(S(), 'all', 'yen');
+    const mil = setUnit(S(), 'all', 'million');
     assert.equal(toDisplayAmount(1234.567, yen), 1234567);
     assert.equal(fromDisplayAmount(1234567, yen), 1234.567);
     assert.equal(toDisplayAmount(1234, S()), 1234);
@@ -78,19 +78,19 @@ describe('表示単位', () => {
     assert.equal(fromDisplayAmount(undefined, yen), null);
   });
   test('円で入力した値を戻しても誤差が出ない', () => {
-    const yen = { ...S(), unit: 'yen' };
+    const yen = setUnit(S(), 'all', 'yen');
     for (const v of [1, 999, 1234567, 100000001, -98765]) {
       assert.equal(toDisplayAmount(fromDisplayAmount(v, yen), yen), v);
     }
   });
   test('unitOf は不明な単位なら千円', () => {
-    assert.equal(unitOf({ unit: 'x' }).name, '千円');
+    assert.equal(unitOf({ units: { compare: 'x' } }).name, '千円');
     assert.equal(unitOf(undefined).name, '千円');
     assert.deepEqual(AMOUNT_UNITS.map((u) => u.name), ['円', '千円', '百万円']);
   });
   test('formatAmount / formatValue に単位と桁数が反映される', () => {
-    const yen = formatOptions({ ...S(), unit: 'yen' });
-    const mil = formatOptions({ ...S(), unit: 'million' });
+    const yen = formatOptions(setUnit(S(), 'all', 'yen'));
+    const mil = formatOptions(setUnit(S(), 'all', 'million'));
     assert.equal(formatAmount(1234.5, yen), '1,234,500');
     assert.equal(formatAmount(123456, mil), '123.5');
     assert.equal(formatValue({ value: 15000, status: 'ok' }, '千円', yen), '15,000,000円');
@@ -108,7 +108,7 @@ describe('表示単位', () => {
   test('貸借不一致の警告は表示単位で出る', () => {
     const p = getSampleData().periods[0];
     p.bs.totalAssets = 100001;
-    const [w] = getWarnings(p, formatOptions({ ...S(), unit: 'yen' }));
+    const [w] = getWarnings(p, formatOptions(setUnit(S(), 'all', 'yen')));
     assert.match(w.message, /差額 1,000円/);
   });
 });
@@ -285,7 +285,7 @@ describe('年日数・調整区分名', () => {
 describe('結果テキスト・CSV への反映', () => {
   test('結果テキストは表示単位・非表示の指標を反映する', () => {
     const d = getSampleData();
-    const s = setIndicatorHidden({ ...S(), unit: 'yen' }, 'roe', true);
+    const s = setIndicatorHidden(setUnit(S(), 'all', 'yen'), 'roe', true);
     const opts = { ...formatOptions(s), indicators: indicatorList(s) };
     const text = buildResultText(d, calcIndicators(d.periods[0]), [], 0, opts);
     assert.match(text, /金額単位：円/);
@@ -293,7 +293,7 @@ describe('結果テキスト・CSV への反映', () => {
     assert.doesNotMatch(text, /ROE/);
   });
   test('比較表CSVは表示単位で出力し、単位列・注記も変わる', () => {
-    const d = { ...getSampleData(), settings: { ...S(), unit: 'million' } };
+    const d = { ...getSampleData(), settings: setUnit(S(), 'all', 'million') };
     const csv = buildComparisonCsv(d, 'end');
     assert.match(csv, /主要数値,売上高,百万円,100\r\n/);
     assert.match(csv, /金額単位：百万円/);
@@ -301,7 +301,7 @@ describe('結果テキスト・CSV への反映', () => {
     assert.match(csv, /収益性,売上総利益率,%,40\r\n/);
   });
   test('ブリッジ・ネットデットCSVも表示単位で出力', () => {
-    const d = { ...getSampleData(), settings: { ...S(), unit: 'yen' } };
+    const d = { ...getSampleData(), settings: setUnit(S(), 'all', 'yen') };
     assert.match(buildBridgeCsv(d), /報告EBITDA,円,15000000\r\n/);
     assert.match(buildBridgeCsv(d), /金額（円）/);
     assert.match(buildNetDebtCsv(d), /有利子負債,40000000\r\n/);
@@ -345,13 +345,13 @@ describe('データ移行 version 3 → 4', () => {
   test('v3 のバックアップを復元できる', () => {
     const r = parseBackup(JSON.stringify({ format: 'finAnalysisTool-backup', formatVersion: 1, exportedAt: null, data: v3() }));
     assert.equal(r.ok, true);
-    assert.equal(r.data.version, 4);
+    assert.equal(r.data.version, 5);
     assert.deepEqual(r.data.settings, S());
   });
   test('v4 バックアップの往復で設定・内訳も復元される', () => {
     let { data, key } = addCustomAccount(getSampleData(), 'sga', '役員報酬');
     data = setDetailValue(data, 0, key, 1000);
-    data = updateSettings(data, { unit: 'yen', backupReminderDays: 7 });
+    data = updateSettings(data, { units: setUnit(data.settings, 'all', 'yen').units, backupReminderDays: 7 });
     const r = parseBackup(backupToJson(data));
     assert.equal(r.ok, true);
     assert.deepEqual(r.data, data);
@@ -374,14 +374,76 @@ describe('その他', () => {
     assert.equal(needsBackupReminder(null, true, NOW, 0), false);
   });
   test('クリアしても設定は引き継げる', () => {
-    const s = { ...S(), unit: 'yen' };
-    assert.equal(createEmptyData(s).settings.unit, 'yen');
-    assert.equal(createEmptyData().settings.unit, 'thousand');
+    const s = setUnit(S(), 'all', 'yen');
+    assert.equal(createEmptyData(s).settings.units.compare, 'yen');
+    assert.equal(createEmptyData().settings.units.compare, 'thousand');
   });
   test('内訳だけ入力されていてもデータありとみなす', () => {
     let { data, key } = addCustomAccount(createEmptyData(), 'sga', 'x');
     assert.equal(hasAnyData(data), false);
     data = setDetailValue(data, 0, key, 1);
     assert.equal(hasAnyData(data), true);
+  });
+});
+
+describe('単位の区分ごと設定', () => {
+  test('区分は6つで、既定はすべて千円', () => {
+    assert.deepEqual(UNIT_SCOPES.map((x) => x.id), ['pl', 'bs', 'ebitda', 'netDebt', 'compare', 'report']);
+    assert.equal(commonUnit(S()).name, '千円');
+  });
+  test('区分ごとに単位を変えると、その区分だけ換算される', () => {
+    let s = setUnit(S(), 'pl', 'yen');
+    s = setUnit(s, 'report', 'million');
+    assert.equal(toDisplayAmount(1.5, s, 'pl'), 1500);
+    assert.equal(toDisplayAmount(1.5, s, 'bs'), 1.5);
+    assert.equal(fromDisplayAmount(2500, s, 'pl'), 2.5);
+    assert.equal(formatAmount(123456, formatOptions(s, 'report')), '123.5');
+    assert.equal(formatOptions(s, 'compare').amountUnit, '千円');
+    assert.equal(commonUnit(s), null);
+  });
+  test('setUnit：all で全区分、不明な区分・単位は変更しない', () => {
+    const s0 = S();
+    assert.equal(commonUnit(setUnit(s0, 'all', 'yen')).name, '円');
+    assert.equal(setUnit(s0, 'zzz', 'yen'), s0);
+    assert.equal(setUnit(s0, 'pl', 'dollar'), s0);
+    assert.equal(s0.units.pl, 'thousand');
+  });
+  test('CSV は「印刷用レポート・CSV」の単位を使う', () => {
+    const d = { ...getSampleData(), settings: setUnit(setUnit(S(), 'compare', 'yen'), 'report', 'million') };
+    assert.match(buildComparisonCsv(d, 'end'), /主要数値,売上高,百万円,100\r\n/);
+  });
+  test('不正な区分の値は旧形式の unit または千円で補う', () => {
+    const s = normalizeSettings({ units: { pl: 'yen', bs: 'x' } });
+    assert.equal(s.units.pl, 'yen');
+    assert.equal(s.units.bs, 'thousand');
+    const old = normalizeSettings({ unit: 'million' });
+    assert.equal(commonUnit(old).name, '百万円');
+  });
+});
+
+describe('データ移行 version 4 → 5', () => {
+  const v4 = (unit) => {
+    const d = JSON.parse(JSON.stringify(getSampleData()));
+    d.version = 4;
+    const { units, ...rest } = d.settings;
+    d.settings = { ...rest, unit };
+    return d;
+  };
+  test('全体の単位（unit）を全区分の単位（units）に引き継ぐ（元データは不変）', () => {
+    const src = v4('yen');
+    const d = migrateV4toV5(src);
+    assert.equal(d.version, 5);
+    assert.equal(commonUnit(d.settings).name, '円');
+    assert.equal(d.settings.unit, undefined);
+    assert.equal(src.version, 4);
+    assert.equal(src.settings.unit, 'yen');
+  });
+  test('v4 のバックアップを復元でき、金額と計算結果は変わらない', () => {
+    const src = v4('million');
+    const r = parseBackup(JSON.stringify({ format: 'finAnalysisTool-backup', formatVersion: 1, exportedAt: null, data: src }));
+    assert.equal(r.ok, true);
+    assert.equal(r.data.version, 5);
+    assert.equal(r.data.settings.units.report, 'million');
+    assert.deepEqual(r.data.periods, getSampleData().periods);
   });
 });

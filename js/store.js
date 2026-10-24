@@ -4,7 +4,7 @@ import { PL_FIELDS, BS_FIELDS, MAX_PERIODS, ADJUSTMENT_CATEGORIES, isNum } from 
 import { createDefaultSettings, normalizeSettings, applyAccountTotals } from './settings.js';
 
 export const STORAGE_KEY = 'finAnalysisTool.data';
-export const CURRENT_VERSION = 4;
+export const CURRENT_VERSION = 5;
 
 function defaultStorage() {
   try {
@@ -224,8 +224,16 @@ export function migrate(raw) {
   if (data.version === 1) data = migrateV1toV2(data);
   if (data.version === 2) data = migrateV2toV3(data);
   if (data.version === 3) data = migrateV3toV4(data);
+  if (data.version === 4) data = migrateV4toV5(data);
   if (data.version === CURRENT_VERSION) return data;
   return null;
+}
+
+// version 4 → 5：金額の単位を全体で1つ（settings.unit）から区分ごと（settings.units）に変更する。
+// 旧設定の単位をすべての区分に引き継ぐ。
+export function migrateV4toV5(v4) {
+  // normalizeSettings は旧形式の unit を全区分の単位として読み替える
+  return { ...v4, version: 5, settings: normalizeSettings(v4.settings) };
 }
 
 // version 3 → 4：設定（settings）を既定値で追加し、各期に内訳科目の値（details）を追加する。
@@ -352,7 +360,7 @@ export const BACKUP_FORMAT_VERSION = 1;
 export const LAST_BACKUP_KEY = 'finAnalysisTool.lastBackupAt';
 export const BACKUP_REMINDER_DAYS = 30;
 
-const SUPPORTED_DATA_VERSIONS = [1, 2, 3, 4];
+const SUPPORTED_DATA_VERSIONS = [1, 2, 3, 4, 5];
 
 export function createBackup(data, now = new Date()) {
   return {

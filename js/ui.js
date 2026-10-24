@@ -21,7 +21,7 @@ import {
   registerServiceWorker, requestPersistentStorage, checkForUpdate, isStoragePersisted, APP_VERSION,
 } from './pwa.js';
 import {
-  AMOUNT_UNITS, BACKUP_REMINDER_CHOICES, DIGIT_LIMITS, createDefaultSettings, unitOf, toDisplayAmount, fromDisplayAmount,
+  AMOUNT_UNITS, UNIT_SCOPES, commonUnit, setUnit, BACKUP_REMINDER_CHOICES, DIGIT_LIMITS, createDefaultSettings, unitOf, toDisplayAmount, fromDisplayAmount,
   formatOptions, accountLabel, accountTree, renameAccount, setAccountHidden, moveAccount, addCustomAccount,
   removeCustomAccount, applyAccountTotalsToPeriod, isComputedAccount, indicatorList, setIndicatorHidden, moveIndicator,
   arrangeComparisonRows, rowLabel, categoryLabel, renameCategory, updateSettings, OTHER_DETAIL_LABEL, MAX_CUSTOM_ACCOUNTS,
@@ -64,41 +64,45 @@ function settings() {
   return state.data.settings;
 }
 
-function fmt() {
-  return formatOptions(settings());
+// scope = 単位の区分（pl / bs / ebitda / netDebt / compare / report）。省略時は分析結果・比較表の単位
+function fmt(scope = 'compare') {
+  return formatOptions(settings(), scope);
 }
 
-function unitName() {
-  return unitOf(settings()).name;
+function unitName(scope = 'compare') {
+  return unitOf(settings(), scope).name;
 }
 
 function days() {
   return daysInYearOf(state.data);
 }
 
-function fa(v) {
-  return formatAmount(v, fmt());
+function fa(v, scope) {
+  return formatAmount(v, fmt(scope));
 }
 
-function fv(result, unit) {
-  return formatValue(result, unit, fmt());
+function fv(result, unit, scope) {
+  return formatValue(result, unit, fmt(scope));
 }
 
-// 入力欄の表示用（内部値は千円。表示単位に換算し、丸めずにカンマ区切り）
-function formatInput(v) {
-  const d = toDisplayAmount(v, settings());
+// 入力欄の表示用（内部値は千円。区分の単位に換算し、丸めずにカンマ区切り）
+function formatInput(v, scope) {
+  const d = toDisplayAmount(v, settings(), scope);
   if (!isNum(d)) return '';
   return d.toLocaleString('ja-JP', { maximumFractionDigits: 10 });
 }
 
-// 表示単位で入力された文字列 → 内部値（千円）。解釈できなければ null
-function parseInput(text) {
-  return fromDisplayAmount(parseAmount(text), settings());
+// 区分の単位で入力された文字列 → 内部値（千円）。解釈できなければ null
+function parseInput(text, scope) {
+  return fromDisplayAmount(parseAmount(text), settings(), scope);
 }
 
-// 画面内の「千円」表記を表示単位に合わせる
+// 画面内の単位表記（.unit-name の data-scope の区分）を設定に合わせる。data-scope="all" は全区分が同じなら単位、違えば「区分ごと」
 function renderUnitLabels() {
-  document.querySelectorAll('.unit-name').forEach((n) => { n.textContent = unitName(); });
+  document.querySelectorAll('.unit-name').forEach((n) => {
+    const scope = n.dataset.scope || 'compare';
+    n.textContent = scope === 'all' ? (commonUnit(settings())?.name ?? '区分ごとに設定') : unitName(scope);
+  });
 }
 
 function periodName(p, i) {
@@ -125,11 +129,11 @@ function saveNow() {
 
 // ---- 入力タブ ----
 
-function amountInput(id, attrs, value) {
+function amountInput(id, attrs, value, scope) {
   const input = el('input', {
     id, type: 'text', inputmode: 'decimal', autocomplete: 'off', enterkeyhint: 'next', ...attrs,
   });
-  input.value = formatInput(value);
+  input.value = formatInput(value, scope);
   return input;
 }
 
@@ -141,7 +145,7 @@ function renderAmountFields(containerId, section) {
   for (const a of accountTree(settings(), section)) {
     if (a.hidden) continue;
     const id = `f-${section}-${a.key}`;
-    const input = amountInput(id, { 'data-section': section, 'data-key': a.key }, p[section][a.key]);
+    const input = amountInput(id, { 'data-section': section, 'data-key': a.key }, p[section][a.key], section);
     input.addEventListener('input', onFieldInput);
     input.addEventListener('blur', onFieldBlur);
     const sign = el('button', { type: 'button', className: 'sign-btn', 'aria-label': `${a.label}の符号を反転`, text: '±' });
@@ -151,7 +155,7 @@ function renderAmountFields(containerId, section) {
     if (a.children.length) row.append(el('span', { className: 'computed-note', text: '内訳の合計' }));
     for (const c of a.children) {
       const cid = `f-detail-${c.key}`;
-      const ci = amountInput(cid, { 'data-detail': c.key, 'data-parent': a.key, 'data-section': section }, p.details?.[c.key]);
+      const ci = amountInput(cid, { 'data-detail': c.key, 'data-parent': a.key, 'data-section': section }, p.details?.[c.key], section);
       ci.addEventListener('input', onDetailInput);
       ci.addEventListener('blur', onDetailBlur);
       const cs = el('button', { type: 'button', className: 'sign-btn', 'aria-label': `${c.label}の符号を反転`, text: '±' });
@@ -172,7 +176,7 @@ function refreshParentField(section, key) {
   input.classList.toggle('computed', computed);
   const row = input.closest('.amount-row');
   row?.querySelector('.computed-note')?.toggleAttribute('hidden', !computed);
-  if (computed || document.activeElement !== input) input.value = formatInput(p[section][key]);
+  if (computed || document.activeElement !== input) input.value = formatInput(p[section][key], section);
 }
 
 function setDetail(key, value) {
@@ -186,7 +190,7 @@ function setDetail(key, value) {
 function onDetailInput(e) {
   const input = e.target;
   const text = input.value.trim();
-  const v = parseInput(text);
+  const v = parseInput(text, input.dataset.section);
   setDetail(input.dataset.detail, v);
   input.setAttribute('aria-invalid', text !== '' && v === null ? 'true' : 'false');
   refreshParentField(input.dataset.section, input.dataset.parent);
@@ -195,7 +199,7 @@ function onDetailInput(e) {
 
 function onDetailBlur(e) {
   const v = currentPeriod().details?.[e.target.dataset.detail];
-  if (isNum(v)) e.target.value = formatInput(v);
+  if (isNum(v)) e.target.value = formatInput(v, e.target.dataset.section);
 }
 
 function toggleDetailSign(key, input) {
@@ -206,7 +210,7 @@ function toggleDetailSign(key, input) {
     return;
   }
   setDetail(key, -v);
-  input.value = formatInput(-v);
+  input.value = formatInput(-v, input.dataset.section);
   refreshParentField(input.dataset.section, input.dataset.parent);
   update();
 }
@@ -250,7 +254,7 @@ function onFieldInput(e) {
   const input = e.target;
   const { section, key } = input.dataset;
   const text = input.value.trim();
-  const v = parseInput(text);
+  const v = parseInput(text, section);
   currentPeriod()[section][key] = v;
   input.setAttribute('aria-invalid', text !== '' && v === null ? 'true' : 'false');
   update();
@@ -259,7 +263,7 @@ function onFieldInput(e) {
 function onFieldBlur(e) {
   const input = e.target;
   const v = currentPeriod()[input.dataset.section][input.dataset.key];
-  if (isNum(v)) input.value = formatInput(v);
+  if (isNum(v)) input.value = formatInput(v, input.dataset.section);
 }
 
 function toggleSign(section, key, input) {
@@ -271,7 +275,7 @@ function toggleSign(section, key, input) {
     return;
   }
   currentPeriod()[section][key] = -v;
-  input.value = formatInput(-v);
+  input.value = formatInput(-v, section);
   update();
 }
 
@@ -311,7 +315,7 @@ function onMovePeriod(delta) {
 function renderInputWarnings() {
   const box = $('warnings');
   box.replaceChildren();
-  for (const w of getWarnings(currentPeriod(), fmt())) {
+  for (const w of getWarnings(currentPeriod(), fmt('bs'))) {
     box.append(el('div', { className: 'warning', text: w.message }));
   }
 }
@@ -362,9 +366,9 @@ function renderInputResults() {
 
 // ---- 正常化EBITDA（調整項目） ----
 
-function formatSigned(v) {
+function formatSigned(v, scope) {
   if (!isNum(v)) return '—';
-  const t = fa(v);
+  const t = fa(v, scope);
   return v > 0 && t !== '0' ? `+${t}` : t;
 }
 
@@ -387,15 +391,15 @@ function renderAdjustments() {
     desc.value = a.description;
     desc.addEventListener('input', () => { a.description = desc.value; onAdjustmentChanged(); });
 
-    const amount = el('input', { id: `${idBase}-amt`, type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: unitName() });
-    amount.value = formatInput(a.amount);
+    const amount = el('input', { id: `${idBase}-amt`, type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: unitName('ebitda') });
+    amount.value = formatInput(a.amount, 'ebitda');
     amount.addEventListener('input', () => {
       const text = amount.value.trim();
-      a.amount = parseInput(text);
+      a.amount = parseInput(text, 'ebitda');
       amount.setAttribute('aria-invalid', text !== '' && a.amount === null ? 'true' : 'false');
       onAdjustmentChanged();
     });
-    amount.addEventListener('blur', () => { if (isNum(a.amount)) amount.value = formatInput(a.amount); });
+    amount.addEventListener('blur', () => { if (isNum(a.amount)) amount.value = formatInput(a.amount, 'ebitda'); });
     const sign = el('button', { type: 'button', className: 'sign-btn', 'aria-label': '金額の符号を反転', text: '±' });
     sign.addEventListener('click', () => {
       if (!isNum(a.amount)) {
@@ -404,7 +408,7 @@ function renderAdjustments() {
         return;
       }
       a.amount = -a.amount;
-      amount.value = formatInput(a.amount);
+      amount.value = formatInput(a.amount, 'ebitda');
       onAdjustmentChanged();
     });
 
@@ -419,7 +423,7 @@ function renderAdjustments() {
       el('label', { className: 'field', for: select.id }, [el('span', { className: 'field-label', text: '区分' }), select]),
       el('label', { className: 'field', for: desc.id }, [el('span', { className: 'field-label', text: '内容' }), desc]),
       el('div', { className: 'field' }, [
-        el('label', { className: 'field-label', for: amount.id, text: `金額（${unitName()}。EBITDAに加算は＋、減算は−）` }),
+        el('label', { className: 'field-label', for: amount.id, text: `金額（${unitName('ebitda')}。EBITDAに加算は＋、減算は−）` }),
         el('div', { className: 'adj-amount' }, [amount, sign]),
       ]),
       el('label', { className: 'field', for: memo.id }, [el('span', { className: 'field-label', text: '根拠メモ' }), memo]),
@@ -452,14 +456,14 @@ function renderAdjustmentSummary() {
   const r = calcNormalizedEbitda(p, settings().adjustmentCategoryNames);
   const table = $('bridgeSingle');
   table.replaceChildren();
-  const u = unitName();
+  const u = unitName('ebitda');
   const row = (name, value, cls = '') => el('tr', { className: cls }, [el('th', { scope: 'row', text: name }), el('td', { text: value })]);
-  table.append(row('報告EBITDA（営業利益＋減価償却費）', isNum(r.reported) ? `${fa(r.reported)}${u}` : '—'));
+  table.append(row('報告EBITDA（営業利益＋減価償却費）', isNum(r.reported) ? `${fa(r.reported, 'ebitda')}${u}` : '—'));
   for (const c of r.byCategory.filter((x) => x.count > 0)) {
-    table.append(row(`${c.name}（${c.count}件）`, `${formatSigned(c.total)}${u}`, 'indent'));
+    table.append(row(`${c.name}（${c.count}件）`, `${formatSigned(c.total, 'ebitda')}${u}`, 'indent'));
   }
-  table.append(row('調整額合計', `${formatSigned(r.adjustmentTotal)}${u}`));
-  table.append(row('正常化EBITDA', isNum(r.normalized) ? `${fa(r.normalized)}${u}` : '—', 'total'));
+  table.append(row('調整額合計', `${formatSigned(r.adjustmentTotal, 'ebitda')}${u}`));
+  table.append(row('正常化EBITDA', isNum(r.normalized) ? `${fa(r.normalized, 'ebitda')}${u}` : '—', 'total'));
   table.append(row('正常化EBITDAマージン', fv({ value: r.margin, status: isNum(r.margin) ? 'ok' : 'na' }, '%')));
 }
 
@@ -499,8 +503,8 @@ function renderBridgeTable() {
     for (const v of r.values) {
       let text;
       if (r.unit === '%') text = fv({ value: v, status: isNum(v) ? 'ok' : 'na' }, '%');
-      else if (r.kind === 'adjustment' || r.kind === 'subtotal') text = formatSigned(v);
-      else text = isNum(v) ? fa(v) : '—';
+      else if (r.kind === 'adjustment' || r.kind === 'subtotal') text = formatSigned(v, 'ebitda');
+      else text = isNum(v) ? fa(v, 'ebitda') : '—';
       tr.append(el('td', {}, [el('span', { className: `cell-value${isNum(v) ? (v < 0 ? ' negative' : '') : ' na'}`, text })]));
     }
     tbody.append(tr);
@@ -519,8 +523,8 @@ function pctText(v) {
   return fv({ value: v, status: isNum(v) ? 'ok' : 'na' }, '%');
 }
 
-function amountText(v) {
-  return isNum(v) ? `${fa(v)}${unitName()}` : '—';
+function amountText(v, scope = 'netDebt') {
+  return isNum(v) ? `${fa(v, scope)}${unitName(scope)}` : '—';
 }
 
 function acc(key) {
@@ -539,15 +543,15 @@ function renderNetDebtInputs() {
       name.value = it.name;
       name.addEventListener('input', () => { it.name = name.value; onNetDebtChanged(); });
 
-      const amount = el('input', { id: `${idBase}-amt`, type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: unitName() });
-      amount.value = formatInput(it.amount);
+      const amount = el('input', { id: `${idBase}-amt`, type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: unitName('netDebt') });
+      amount.value = formatInput(it.amount, 'netDebt');
       amount.addEventListener('input', () => {
         const text = amount.value.trim();
-        it.amount = parseInput(text);
+        it.amount = parseInput(text, 'netDebt');
         amount.setAttribute('aria-invalid', text !== '' && it.amount === null ? 'true' : 'false');
         onNetDebtChanged();
       });
-      amount.addEventListener('blur', () => { if (isNum(it.amount)) amount.value = formatInput(it.amount); });
+      amount.addEventListener('blur', () => { if (isNum(it.amount)) amount.value = formatInput(it.amount, 'netDebt'); });
       const sign = el('button', { type: 'button', className: 'sign-btn', 'aria-label': '金額の符号を反転', text: '±' });
       sign.addEventListener('click', () => {
         if (!isNum(it.amount)) {
@@ -556,7 +560,7 @@ function renderNetDebtInputs() {
           return;
         }
         it.amount = -it.amount;
-        amount.value = formatInput(it.amount);
+        amount.value = formatInput(it.amount, 'netDebt');
         onNetDebtChanged();
       });
 
@@ -576,7 +580,7 @@ function renderNetDebtInputs() {
       list.append(el('div', { className: 'adj-item', 'data-list': def.key }, [
         el('label', { className: 'field', for: name.id }, [el('span', { className: 'field-label', text: '名称' }), name]),
         el('div', { className: 'field' }, [
-          el('label', { className: 'field-label', for: amount.id, text: `金額（${unitName()}）` }),
+          el('label', { className: 'field-label', for: amount.id, text: `金額（${unitName('netDebt')}）` }),
           el('div', { className: 'adj-amount' }, [amount, sign]),
         ]),
         el('label', { className: 'field', for: memo.id }, [el('span', { className: 'field-label', text: '根拠メモ' }), memo]),
@@ -666,7 +670,7 @@ function renderWorkingCapitalTable() {
     tr.append(valueCell(avg === undefined ? '' : fmt(avg), avg ?? null, 'avg-col'));
     tbody.append(tr);
   };
-  const amt = (v) => (isNum(v) ? fa(v) : '—');
+  const amt = (v) => (isNum(v) ? fa(v, 'netDebt') : '—');
   line(acc('receivables'), periods.map((p) => p.bs.receivables), undefined, amt, 'indent');
   line(`＋ ${acc('inventory')}`, periods.map((p) => p.bs.inventory), undefined, amt, 'indent');
   line(`− ${acc('payables')}`, periods.map((p) => p.bs.payables), undefined, amt, 'indent');
@@ -683,7 +687,7 @@ function renderNetDebtTable() {
   for (const r of b.rows) {
     const cls = r.kind === 'total' ? 'total' : r.kind === 'reference' ? 'reference' : r.kind === 'base' ? '' : 'indent';
     const tr = el('tr', { className: cls }, [el('th', { className: 'row-head', scope: 'row', text: r.name })]);
-    r.values.forEach((v) => tr.append(valueCell(isNum(v) ? fa(v) : '—', v)));
+    r.values.forEach((v) => tr.append(valueCell(isNum(v) ? fa(v, 'netDebt') : '—', v)));
     tbody.append(tr);
   }
   const tr = el('tr', {}, [el('th', { className: 'row-head', scope: 'row', text: '調整後ネットデット ÷ 正常化EBITDA' })]);
@@ -748,7 +752,7 @@ function renderReport() {
   const now = new Date();
   box.append(
     el('h1', { text: '財務分析レポート' }),
-    el('p', { className: 'report-meta', text: `会社名：${data.companyName || '（未入力）'}　対象期：${labels.join('、')}　作成日：${formatDateTime(now).slice(0, 10)}　金額単位：${unitName()}` }),
+    el('p', { className: 'report-meta', text: `会社名：${data.companyName || '（未入力）'}　対象期：${labels.join('、')}　作成日：${formatDateTime(now).slice(0, 10)}　金額単位：${unitName('report')}` }),
   );
 
   // 主要指標
@@ -757,8 +761,8 @@ function renderReport() {
     name: rowLabel(settings(), r),
     cells: r.cells.map((c) => ({
       text: r.group === 'amounts' || r.unit === '千円'
-        ? (isNum(c.result.value) ? fa(c.result.value) : (c.result.status === 'notApplicable' ? '参考外' : '—'))
-        : fv(c.result, r.unit),
+        ? (isNum(c.result.value) ? fa(c.result.value, 'report') : (c.result.status === 'notApplicable' ? '参考外' : '—'))
+        : fv(c.result, r.unit, 'report'),
       neg: c.result.status === 'ok' && c.result.value < 0,
     })),
   }));
@@ -772,7 +776,7 @@ function renderReport() {
       name: r.name,
       cls: r.kind === 'adjustment' ? 'indent' : r.kind === 'total' ? 'total' : '',
       cells: r.values.map((v) => ({
-        text: r.unit === '%' ? pctText(v) : r.kind === 'adjustment' || r.kind === 'subtotal' ? formatSigned(v) : (isNum(v) ? fa(v) : '—'),
+        text: r.unit === '%' ? pctText(v) : r.kind === 'adjustment' || r.kind === 'subtotal' ? formatSigned(v, 'report') : (isNum(v) ? fa(v, 'report') : '—'),
         neg: isNum(v) && v < 0,
       })),
     }))),
@@ -788,7 +792,7 @@ function renderReport() {
     for (const [l, cat, desc, amt, memo] of adjRows) {
       tbody.append(el('tr', {}, [
         el('td', { className: 'text', text: l }), el('td', { className: 'text', text: cat }), el('td', { className: 'text', text: desc }),
-        el('td', { className: isNum(amt) && amt < 0 ? 'neg' : '', text: formatSigned(amt) }), el('td', { className: 'text', text: memo }),
+        el('td', { className: isNum(amt) && amt < 0 ? 'neg' : '', text: formatSigned(amt, 'report') }), el('td', { className: 'text', text: memo }),
       ]));
     }
     box.append(el('section', {}, [
@@ -802,9 +806,9 @@ function renderReport() {
   const ndRows = nd.rows.map((r) => ({
     name: r.name,
     cls: r.kind === 'total' ? 'total' : ['debtLike', 'cash', 'cashLike'].includes(r.kind) ? 'indent' : '',
-    cells: r.values.map((v) => ({ text: isNum(v) ? fa(v) : '—', neg: isNum(v) && v < 0 })),
+    cells: r.values.map((v) => ({ text: isNum(v) ? fa(v, 'report') : '—', neg: isNum(v) && v < 0 })),
   }));
-  ndRows.push({ name: '調整後ネットデット ÷ 正常化EBITDA', cells: nd.multiples.map((m) => ({ text: fv(m, '倍'), neg: m.status === 'ok' && m.value < 0 })) });
+  ndRows.push({ name: '調整後ネットデット ÷ 正常化EBITDA', cells: nd.multiples.map((m) => ({ text: fv(m, '倍', 'report'), neg: m.status === 'ok' && m.value < 0 })) });
   box.append(el('section', {}, [el('h2', { text: 'ネットデット内訳' }), reportTable(labels, ndRows)]));
 
   // 運転資本
@@ -812,7 +816,7 @@ function renderReport() {
   box.append(el('section', {}, [
     el('h2', { text: '運転資本（トレード）' }),
     reportTable([...labels, '参考：平均'], [
-      { name: '運転資本', cells: [...wc.items.map((x) => x.amount), wc.average].map((v) => ({ text: isNum(v) ? fa(v) : '—', neg: isNum(v) && v < 0 })) },
+      { name: '運転資本', cells: [...wc.items.map((x) => x.amount), wc.average].map((v) => ({ text: isNum(v) ? fa(v, 'report') : '—', neg: isNum(v) && v < 0 })) },
       { name: '売上高に対する比率', cells: [...wc.items.map((x) => x.ratio), wc.averageRatio].map((v) => ({ text: pctText(v) })) },
     ]),
   ]));
@@ -820,10 +824,10 @@ function renderReport() {
   // 警告・注記
   const warnings = [];
   data.periods.forEach((p, i) => {
-    for (const w of [...getWarnings(p, fmt()), ...getAdjustmentWarnings(p), ...getNetDebtItemWarnings(p)]) warnings.push(`${labels[i]}：${w.message}`);
+    for (const w of [...getWarnings(p, fmt('report')), ...getAdjustmentWarnings(p), ...getNetDebtItemWarnings(p)]) warnings.push(`${labels[i]}：${w.message}`);
   });
   const notes = [
-    `金額単位は${unitName()}。計算は入力値をそのまま用い、表示時のみ丸めています。`,
+    `金額単位は${unitName('report')}。計算は入力値をそのまま用い、表示時のみ丸めています。`,
     `回転日数は1年を${days()}日として計算しています。`,
     '指標は期末残高ベースです。分母が0または未入力の指標は「—」、債務超過等で意味をなさない指標は「参考外」としています。',
     '正常化EBITDA ＝ 報告EBITDA（営業利益＋減価償却費）＋ 調整額合計。調整の妥当性は各根拠メモをご確認ください。',
@@ -1016,7 +1020,7 @@ function renderSectionNav(view) {
 // ---- 設定タブ ----
 
 const SETTINGS_PAGES = [
-  { id: 'unit', title: '表示単位', summary: () => unitName() },
+  { id: 'unit', title: '金額の単位', summary: () => (commonUnit(settings()) ? `すべて${commonUnit(settings()).name}` : '区分ごとに設定') },
   { id: 'pl', title: 'PL科目', summary: () => accountSummary('pl') },
   { id: 'bs', title: 'BS科目', summary: () => accountSummary('bs') },
   { id: 'indicators', title: '指標の表示・並び順', summary: () => `${INDICATORS.length}件中${indicatorList(settings()).length}件を表示` },
@@ -1105,14 +1109,32 @@ function toggle(label, checked, onChange) {
   return el('label', { className: 'check toggle' }, [input, el('span', { text: label })]);
 }
 
+function unitSelect(scope, label) {
+  const select = el('select', { id: `unit-${scope}`, 'aria-label': `${label}の単位` });
+  for (const u of AMOUNT_UNITS) {
+    const o = el('option', { value: u.id, text: u.name });
+    if (u.id === unitOf(settings(), scope).id) o.selected = true;
+    select.append(o);
+  }
+  select.addEventListener('change', () => changeSettings(updateSettings(state.data, { units: setUnit(settings(), scope, select.value).units })));
+  return select;
+}
+
 function renderUnitPage(panel) {
-  panel.append(
-    el('p', { className: 'note', text: '入力と表示に使う金額の単位です。保存されている金額は変わらず、表示だけが切り替わります（例：1,000千円 → 1,000,000円）。CSV・レポートもこの単位で出力します。' }),
-    radioGroup('unit', AMOUNT_UNITS.map((u) => ({
-      value: u.id, label: u.name,
-      note: u.id === 'million' ? '小数第1位まで表示' : u.id === 'yen' ? '入力も円単位で行います' : '従来どおり',
-    })), settings().unit, (v) => changeSettings(updateSettings(state.data, { unit: v }))),
-  );
+  panel.append(el('p', { className: 'note', text: '区分ごとに、入力と表示に使う金額の単位を選べます。保存されている金額（内部は千円）は変わらず、入力・表示のときだけ換算します（例：1,000千円 → 1,000,000円）。百万円は小数第1位まで表示します。' }));
+  for (const x of UNIT_SCOPES) {
+    panel.append(el('label', { className: 'field unit-field', for: `unit-${x.id}` }, [
+      el('span', { className: 'unit-field-name', text: x.name }),
+      unitSelect(x.id, x.name),
+      el('span', { className: 'note unit-field-note', text: x.note }),
+    ]));
+  }
+  const all = el('div', { className: 'actions' }, AMOUNT_UNITS.map((u) => {
+    const b = el('button', { type: 'button', className: 'btn', text: `すべて${u.name}` });
+    b.addEventListener('click', () => changeSettings(updateSettings(state.data, { units: setUnit(settings(), 'all', u.id).units })));
+    return b;
+  }));
+  panel.append(el('h3', { className: 'sub-title', text: 'まとめて変更' }), all);
 }
 
 function renderAccountsPage(section, panel) {
