@@ -125,7 +125,7 @@ export const INDICATORS = [
   {
     id: 'operatingMargin', category: 'profitability', name: '営業利益率', unit: '%',
     formula: '営業利益 ÷ 売上高',
-    guide: '本業の稼ぐ力。一般に5%以上で良好、10%以上で高収益とされることが多い（業種差あり）。',
+    guide: '本業の稼ぐ力。マイナスは本業で赤字。業種差が大きいため、同業他社や過去との比較でも見る。',
     compute: ({ pl }) => safeDiv(pl.operatingIncome, pl.sales),
   },
   {
@@ -138,14 +138,14 @@ export const INDICATORS = [
     id: 'roa', category: 'profitability', name: 'ROA（総資産経常利益率）', unit: '%',
     averageable: true,
     formula: '経常利益 ÷ 総資産',
-    guide: '資産全体をどれだけ効率よく利益に結びつけたか。中小企業では5%程度が一つの目安。',
+    guide: '資産全体をどれだけ効率よく利益に結びつけたか。マイナスは経常赤字。',
     compute: ({ pl, bs }) => safeDiv(pl.ordinaryIncome, bs.totalAssets),
   },
   {
     id: 'roe', category: 'profitability', name: 'ROE（自己資本利益率）', unit: '%',
     averageable: true,
     formula: '当期純利益 ÷ 自己資本',
-    guide: '株主の資本でどれだけ利益を上げたか。8〜10%以上が一つの目安。自己資本が小さいと高く出やすい点に注意。',
+    guide: '株主の資本でどれだけ利益を上げたか。自己資本が小さいと高く出やすいため、自己資本比率と合わせて見る。',
     insolventNA: true,
     compute: ({ pl, bs }) => safeDiv(pl.netIncome, bs.netAssets),
   },
@@ -153,25 +153,25 @@ export const INDICATORS = [
   {
     id: 'currentRatio', category: 'safety', name: '流動比率', unit: '%',
     formula: '流動資産 ÷ 流動負債',
-    guide: '1年以内の支払能力。一般に200%以上が理想、100%を下回ると資金繰りに注意。',
+    guide: '1年以内の支払能力。高いほど短期の資金繰りに余裕があり、100%を下回ると流動負債を流動資産で返しきれない。',
     compute: ({ bs }) => safeDiv(bs.currentAssets, bs.currentLiabilities),
   },
   {
     id: 'quickRatio', category: 'safety', name: '当座比率', unit: '%',
     formula: '(現預金 + 売上債権) ÷ 流動負債',
-    guide: '換金性の高い資産での短期支払能力。100%以上が一つの目安。',
+    guide: '換金性の高い資産（現預金・売上債権）での短期支払能力。在庫を除くため流動比率より厳しい見方。',
     compute: ({ bs }) => safeDiv(sumOf(bs.cash, bs.receivables), bs.currentLiabilities),
   },
   {
     id: 'equityRatio', category: 'safety', name: '自己資本比率', unit: '%',
     formula: '自己資本 ÷ 総資産',
-    guide: '返済不要の資本の割合。30%以上で安定、40%以上で優良とされることが多い。マイナスは債務超過。',
+    guide: '返済不要の資本の割合。高いほど財務が安定する。マイナスは債務超過。',
     compute: ({ bs }) => safeDiv(bs.netAssets, bs.totalAssets),
   },
   {
     id: 'fixedRatio', category: 'safety', name: '固定比率', unit: '%',
     formula: '固定資産 ÷ 自己資本',
-    guide: '固定資産を自己資本でまかなえているか。100%以下が理想。',
+    guide: '固定資産を自己資本でまかなえているか。100%以下なら自己資本の範囲内で、低いほど安定。',
     insolventNA: true,
     compute: ({ bs }) => safeDiv(bs.fixedAssets, bs.netAssets),
   },
@@ -188,7 +188,7 @@ export const INDICATORS = [
   {
     id: 'deRatio', category: 'safety', name: 'D/Eレシオ', unit: '倍',
     formula: '有利子負債 ÷ 自己資本',
-    guide: '自己資本に対する借入の大きさ。1倍以下が一つの目安。高いほど財務レバレッジが大きい。',
+    guide: '自己資本に対する借入の大きさ。高いほど財務レバレッジが大きく、金利上昇や業績悪化の影響を受けやすい。',
     insolventNA: true,
     compute: ({ pl, bs }) => safeDiv(bs.interestBearingDebt, bs.netAssets),
   },
@@ -252,7 +252,7 @@ export const INDICATORS = [
   {
     id: 'netDebtToEbitda', category: 'ma', name: 'ネットデット ÷ EBITDA', unit: '倍',
     formula: 'ネットデット ÷ EBITDA',
-    guide: '借入を何年分のEBITDAで返済できるか。3倍以下が一つの目安、5倍超は借入過大とされやすい。EBITDAがマイナスの場合は参考外。',
+    guide: '借入を何年分のEBITDAで返済できるか。小さいほど返済余力がある。マイナスはネットキャッシュ。EBITDAがマイナスの場合は参考外。',
     notApplicable: (ctx) => {
       const e = ebitda(ctx);
       return isNum(e) && e < 0;

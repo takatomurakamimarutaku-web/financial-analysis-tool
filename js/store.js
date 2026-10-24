@@ -4,7 +4,7 @@ import { PL_FIELDS, BS_FIELDS, MAX_PERIODS, ADJUSTMENT_CATEGORIES, isNum } from 
 import { createDefaultSettings, normalizeSettings, applyAccountTotals } from './settings.js';
 
 export const STORAGE_KEY = 'finAnalysisTool.data';
-export const CURRENT_VERSION = 6;
+export const CURRENT_VERSION = 7;
 
 function defaultStorage() {
   try {
@@ -226,8 +226,15 @@ export function migrate(raw) {
   if (data.version === 3) data = migrateV3toV4(data);
   if (data.version === 4) data = migrateV4toV5(data);
   if (data.version === 5) data = migrateV5toV6(data);
+  if (data.version === 6) data = migrateV6toV7(data);
   if (data.version === CURRENT_VERSION) return data;
   return null;
+}
+
+// version 6 → 7：設定に評価バッジの基準（evaluation）を追加する（既定は「標準」でバッジ表示オン）
+export function migrateV6toV7(v6) {
+  const settings = isPlainObject(v6.settings) ? v6.settings : {};
+  return { ...v6, version: 7, settings: normalizeSettings({ ...settings, evaluation: undefined }) };
 }
 
 // version 5 → 6：設定に表示テーマ（theme）とマイナスの表示方法（negativeStyle）を追加する（既定は従来どおり）
@@ -367,7 +374,7 @@ export const BACKUP_FORMAT_VERSION = 1;
 export const LAST_BACKUP_KEY = 'finAnalysisTool.lastBackupAt';
 export const BACKUP_REMINDER_DAYS = 30;
 
-const SUPPORTED_DATA_VERSIONS = [1, 2, 3, 4, 5, 6];
+const SUPPORTED_DATA_VERSIONS = [1, 2, 3, 4, 5, 6, 7];
 
 export function createBackup(data, now = new Date()) {
   return {

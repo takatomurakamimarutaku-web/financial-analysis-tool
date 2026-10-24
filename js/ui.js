@@ -29,6 +29,10 @@ import {
   removeCustomAccount, applyAccountTotalsToPeriod, isComputedAccount, indicatorList, setIndicatorHidden, moveIndicator,
   arrangeComparisonRows, rowLabel, categoryLabel, renameCategory, updateSettings, OTHER_DETAIL_LABEL, MAX_CUSTOM_ACCOUNTS,
 } from './settings.js';
+import {
+  CRITERIA, JFC_INDUSTRIES, BADGE_TARGETS, TKC_TARGETS, badgeFor, badgesFor, criterionLabel, guideFor, ruleFor,
+  setCriterion, setOverride, resetOverrides, setTkcValue, setBadgeDisabled, isModified, reportNote,
+} from './badges.js';
 
 const SAVE_DELAY_MS = 300;
 
@@ -111,6 +115,31 @@ function applyTheme() {
   }
 }
 
+// ---- 評価バッジ ----
+
+function evaluation() {
+  return settings().evaluation;
+}
+
+function badgeEl(b, small = false) {
+  return el('span', { className: `badge badge-${b.level}${small ? ' badge-small' : ''}`, text: b.text });
+}
+
+// 「評価基準：○○ ›」。タップで設定の評価基準ページを開く
+function criterionBar() {
+  const ev = evaluation();
+  const b = el('button', { type: 'button', className: 'criterion-bar' }, [
+    el('span', { className: 'criterion-label', text: '評価基準' }),
+    el('span', { className: 'criterion-name', text: ev.enabled ? criterionLabel(ev) : 'バッジ表示オフ' }),
+    el('span', { className: 'criterion-arrow', 'aria-hidden': 'true', text: '›' }),
+  ]);
+  b.addEventListener('click', () => {
+    state.settingsPage = 'evaluation';
+    setView('settings');
+  });
+  return b;
+}
+
 // ---- サマリー（入力タブ先頭） ----
 
 const SUMMARY_ROWS = ['sales', 'operatingIncome', 'ebitda', 'equityRatio'];
@@ -143,9 +172,11 @@ function renderSummary() {
     const cls = ['kpi-value'];
     if (r.status !== 'ok') cls.push('na');
     else if (r.value < 0) cls.push('negative');
+    const badge = badgeFor(id, r, currentPeriod(), evaluation());
     return el('div', { className: 'kpi' }, [
       el('span', { className: 'kpi-label', text: rowLabel(settings(), row) }),
       el('span', { className: cls.join(' '), text: value }),
+      ...(badge ? [badgeEl(badge, true)] : []),
       ...subs.map((x) => el('span', { className: 'kpi-sub' }, [x])),
     ]);
   });
@@ -400,8 +431,9 @@ function valueClass(base, r) {
 
 function renderInputResults() {
   const results = calcIndicators(currentPeriod(), { days: days() });
+  const badges = badgesFor(results, currentPeriod(), evaluation());
   const box = $('results');
-  box.replaceChildren();
+  box.replaceChildren(criterionBar());
   const list = indicatorList(settings());
   for (const cat of CATEGORIES) {
     const inds = list.filter((i) => i.category === cat.id);
@@ -409,9 +441,12 @@ function renderInputResults() {
     const card = el('section', { className: 'panel category' }, [el('h2', { text: cat.name })]);
     for (const ind of inds) {
       const r = results[ind.id];
+      const badge = badges[ind.id];
+      const guide = guideFor(ind.id, evaluation());
       const details = el('details', { className: 'indicator' }, [
         el('summary', {}, [
           el('span', { className: 'indicator-name', text: ind.name }),
+          ...(badge ? [badgeEl(badge)] : []),
           el('span', { className: valueClass('indicator-value', r), text: fv(r, ind.unit) }),
         ]),
         el('dl', { className: 'indicator-detail' }, [
@@ -419,6 +454,13 @@ function renderInputResults() {
           el('dd', { text: formulaText(ind, days()) }),
           el('dt', { text: '一般的な見方' }),
           el('dd', { text: ind.guide }),
+          ...(guide ? [
+            el('dt', { text: '評価の目安' }),
+            el('dd', {}, [
+              el('span', { text: `${guide.text}（${guide.source}）` }),
+              ...guide.notes.map((n) => el('span', { className: 'guide-note', text: n })),
+            ]),
+          ] : []),
         ]),
       ]);
       card.append(details);
@@ -801,7 +843,9 @@ function reportTable(labels, rows) {
   const tbody = el('tbody');
   for (const r of rows) {
     const tr = el('tr', { className: r.cls || '' }, [el('th', { scope: 'row', text: r.name })]);
-    r.cells.forEach((c) => tr.append(el('td', { className: c.neg ? 'neg' : '', text: c.text })));
+    r.cells.forEach((c) => tr.append(el('td', { className: c.neg ? 'neg' : '' }, [
+      c.text, ...(c.badge ? [el('span', { className: `report-badge badge-${c.badge.level}`, text: c.badge.text })] : []),
+    ])));
     tbody.append(tr);
   }
   return el('table', {}, [el('thead', {}, [head]), tbody]);
@@ -823,7 +867,8 @@ function renderReport() {
   const cmp = buildComparison(data, 'end');
   const rows = REPORT_ROWS.map((id) => cmp.rows.find((r) => r.id === id)).filter(Boolean).map((r) => ({
     name: rowLabel(settings(), r),
-    cells: r.cells.map((c) => ({
+    cells: r.cells.map((c, ci) => ({
+      badge: badgeFor(r.id, c.result, data.periods[ci], evaluation()),
       text: r.group === 'amounts' || r.unit === '千円'
         ? (isNum(c.result.value) ? fa(c.result.value, 'report') : (c.result.status === 'notApplicable' ? '参考外' : '—'))
         : fv(c.result, r.unit, 'report'),
@@ -897,6 +942,7 @@ function renderReport() {
     '正常化EBITDA ＝ 報告EBITDA（営業利益＋減価償却費）＋ 調整額合計。調整の妥当性は各根拠メモをご確認ください。',
     '調整後ネットデット ＝ 有利子負債 ＋ デットライク項目 − 現預金 − キャッシュライク項目。',
     '参考：平均運転資本は、本来は月次残高で算定すべきものであり、本値は期末残高による簡易的な目安です。',
+    ...(reportNote(evaluation()) ? [reportNote(evaluation())] : []),
     '本レポートは入力データに基づく簡易的な分析であり、監査・保証や財務デューデリジェンスの結論ではありません。',
   ];
   box.append(el('section', { className: 'notes' }, [
@@ -942,6 +988,7 @@ function renderCompare() {
   const cmp = buildComparison(state.data, state.basis);
   const table = $('compareTable');
   table.replaceChildren();
+  $('compareCriterion').replaceChildren(criterionBar());
 
   const headRow = el('tr', {}, [el('th', { className: 'row-head', scope: 'col', text: '指標' })]);
   cmp.labels.forEach((l, i) => headRow.append(el('th', { scope: 'col', text: l || `第${i + 1}期` })));
@@ -959,7 +1006,8 @@ function renderCompare() {
     const head = el('th', { className: 'row-head', scope: 'row', text: rowLabel(settings(), row) });
     if (state.basis === 'average' && row.averageable) head.append(el('span', { className: 'avg-mark', text: '★' }));
     const tr = el('tr', {}, [head]);
-    for (const cell of row.cells) {
+    row.cells.forEach((cell, ci) => {
+      const badge = badgeFor(row.id, cell.result, state.data.periods[ci], evaluation());
       const td = el('td', {}, [
         el('span', {
           className: valueClass('cell-value', cell.result),
@@ -968,12 +1016,13 @@ function renderCompare() {
             : fv(cell.result, row.unit),
         }),
       ]);
+      if (badge) td.append(badgeEl(badge, true));
       if (state.showChange && cell.change) {
         td.append(el('span', { className: 'cell-change', text: formatChangeAmount(cell.change, row.unit, fmt()) }));
         td.append(el('span', { className: 'cell-change', text: formatChangeRate(cell.change, fmt()) }));
       }
       tr.append(td);
-    }
+    });
     tbody.append(tr);
   }
   table.append(tbody);
@@ -1178,6 +1227,7 @@ const SETTINGS_PAGES = [
   { id: 'pl', title: 'PL科目', summary: () => accountSummary('pl') },
   { id: 'bs', title: 'BS科目', summary: () => accountSummary('bs') },
   { id: 'indicators', title: '指標の表示・並び順', summary: () => `${INDICATORS.length}件中${indicatorList(settings()).length}件を表示` },
+  { id: 'evaluation', title: '評価基準（バッジ）', summary: () => (evaluation().enabled ? criterionLabel(evaluation()) : 'バッジを表示しない') },
   { id: 'analysis', title: '分析の基本設定', summary: () => `1年＝${days()}日・比較の初期値：${settings().analysis.defaultBasis === 'average' ? '平均残高' : '期末残高'}` },
   { id: 'display', title: '画面の表示', summary: () => `テーマ：${THEMES.find((t) => t.id === settings().theme).name}・マイナス：${settings().negativeStyle === 'triangle' ? '△' : '−'}` },
   { id: 'digits', title: '表示桁数', summary: () => `%：${settings().digits.pct}桁・日：${settings().digits.days}桁・倍/回：${settings().digits.times}桁` },
@@ -1509,7 +1559,119 @@ function renderDisplayPage(panel) {
   );
 }
 
+// ---- 評価基準 ----
+
+function saveEvaluation(next) {
+  changeSettings(updateSettings(state.data, { evaluation: next }));
+}
+
+function criterionDetails(c) {
+  const lines = [el('p', { text: c.summary }), el('p', { className: 'note', text: `出典：${c.source}` })];
+  if (c.id === 'standard') {
+    lines.push(el('p', { className: 'note', text: '業種による差は考慮しません。回転日数・CCC・金額の指標は評価しません。' }));
+  }
+  if (c.id === 'furutado') {
+    lines.push(el('p', { className: 'note', text: '自己資本比率・ROA・流動比率・当座比率・総資産回転率を古田土会計の目安に置き換え、それ以外の指標と、示されていない側の境界は標準の値を使います。指標ごとの目安で、どれが標準から引き継いだ値か確認できます。' }));
+  }
+  if (c.id === 'jfc') {
+    lines.push(el('p', { className: 'note', text: '小企業（原則従業者20人未満）を対象とした調査の「業種全体」の表を使います。建設業・製造業は2024年度調査（2025年8月公表）、ほかの業種は2025年度調査（2026年8月公表）です。調査の対象は9指標（売上総利益率・営業利益率・経常利益率・ROA・総資産回転率・流動比率・当座比率・固定長期適合率・自己資本比率）で、それ以外の指標は標準で評価します。規模の大きい会社では参考程度にしてください。' }));
+    const ul = el('ul', { className: 'note source-list' });
+    for (const x of JFC_INDUSTRIES) ul.append(el('li', { text: `${x.name}：${x.year}調査・${x.count.toLocaleString('ja-JP')}社（うち黒字かつ自己資本プラス${x.goodCount.toLocaleString('ja-JP')}社）・公庫ウェブサイト ${x.file}` }));
+    lines.push(ul);
+  }
+  if (c.id === 'tkc') {
+    lines.push(el('p', { className: 'note', text: c.notice }));
+    lines.push(el('p', { className: 'note', text: '入力した値はこの端末にだけ保存され、JSONバックアップに含まれます。未入力の指標は標準の基準で評価し、指標の詳しい説明にその旨を表示します。' }));
+  }
+  return el('details', { className: 'criterion-detail' }, [el('summary', { text: `${c.name}について詳しく` }), ...lines]);
+}
+
+function boundInput(label, value, unit, onSave) {
+  const input = el('input', { type: 'text', inputmode: 'decimal', autocomplete: 'off', 'aria-label': label, value: isNum(value) ? String(value) : '' });
+  input.addEventListener('change', () => onSave(parseAmount(input.value)));
+  return el('label', { className: 'bound-field' }, [el('span', { className: 'bound-label', text: label }), input, el('span', { className: 'bound-unit', text: unit })]);
+}
+
+function renderEvaluationPage(panel) {
+  const ev = evaluation();
+  panel.append(
+    el('p', { className: 'note', text: '分析結果・比較表・レポートの指標に「良好」「注意」のバッジを付けます。どちらでもない場合はバッジを付けません。判定は丸める前の値で行い、境界の値は良好側に含めます。バッジは目安との比較で、業種・規模・事業モデルによって適切な水準は異なります。' }),
+    toggle('評価バッジを表示する', ev.enabled, (v) => saveEvaluation({ ...ev, enabled: v })),
+    el('h3', { className: 'sub-title', text: '評価基準' }),
+    radioGroup('criterion', CRITERIA.map((c) => ({ value: c.id, label: c.name, note: c.summary })), ev.criterion, (v) => saveEvaluation(setCriterion(ev, v))),
+  );
+  if (ev.criterion === 'jfc') {
+    const select = el('select', { id: 'jfcIndustry', 'aria-label': '業種' });
+    for (const x of JFC_INDUSTRIES) {
+      const o = el('option', { value: x.id, text: `${x.name}（${x.year}）` });
+      if (x.id === ev.jfcIndustry) o.selected = true;
+      select.append(o);
+    }
+    select.addEventListener('change', () => saveEvaluation({ ...ev, jfcIndustry: select.value }));
+    panel.append(el('label', { className: 'field', for: 'jfcIndustry' }, [el('span', { className: 'field-label', text: '業種（公庫）' }), select]));
+  }
+  if (ev.criterion === 'tkc') {
+    const input = el('input', { type: 'text', id: 'tkcIndustry', maxlength: '40', autocomplete: 'off', placeholder: '例：金属製品製造業', value: ev.tkc.industry });
+    input.addEventListener('change', () => saveEvaluation({ ...ev, tkc: { ...ev.tkc, industry: input.value.trim() } }));
+    panel.append(
+      el('label', { className: 'field', for: 'tkcIndustry' }, [el('span', { className: 'field-label', text: '業種名（TKC）' }), input]),
+      el('p', { className: 'note notice', text: CRITERIA.find((c) => c.id === 'tkc').notice }),
+    );
+  }
+  panel.append(el('h3', { className: 'sub-title', text: '基準の説明' }), ...CRITERIA.map(criterionDetails));
+
+  // 指標ごとの目安・変更・オン/オフ
+  const tkc = ev.criterion === 'tkc';
+  panel.append(
+    el('h3', { className: 'sub-title', text: `指標ごとの目安（${criterionLabel(ev)}）` }),
+    el('p', { className: 'note', text: tkc
+      ? '「優良企業平均」以上で良好、「黒字企業平均」未満で注意とします（低いほど良い指標は逆）。空欄の指標は標準の基準で評価します。'
+      : '境界の値を書き換えると、この基準の値として保存されます（空欄にするとその側は判定しません）。変更は基準ごとに保存され、「元に戻す」で基準の値に戻ります。' }),
+  );
+  const list = el('div', { className: 'eval-list' });
+  for (const t of BADGE_TARGETS) {
+    const g = guideFor(t.id, ev);
+    const rule = ruleFor(t.id, ev);
+    const hi = t.dir === 'high';
+    const row = el('div', { className: 'eval-row' }, [
+      el('div', { className: 'eval-head' }, [
+        el('span', { className: 'eval-name', text: t.name }),
+        toggle('表示', !ev.disabled.includes(t.id), (v) => saveEvaluation(setBadgeDisabled(ev, t.id, !v))),
+      ]),
+      el('p', { className: 'eval-bounds', text: `${g.text}（${g.source}）` }),
+      ...g.notes.filter((n) => !n.startsWith('この指標のバッジは')).map((n) => el('p', { className: 'note eval-note', text: n })),
+    ]);
+    if (tkc && TKC_TARGETS.includes(t.id)) {
+      const v = ev.tkc.values[t.id] ?? {};
+      row.append(el('div', { className: 'bound-fields' }, [
+        boundInput('優良企業平均', v.good, t.unit, (x) => saveEvaluation(setTkcValue(ev, t.id, { ...v, good: x }))),
+        boundInput('黒字企業平均', v.caution, t.unit, (x) => saveEvaluation(setTkcValue(ev, t.id, { ...v, caution: x }))),
+      ]));
+    } else if (!tkc) {
+      const bounds = { good: rule.good, caution: rule.caution };
+      const fields = el('div', { className: 'bound-fields' }, [
+        boundInput(`良好（${hi ? '以上' : '以下'}）`, rule.good, t.unit, (x) => saveEvaluation(setOverride(ev, t.id, { ...bounds, good: x }))),
+        boundInput(`注意（${hi ? '未満' : '超'}）`, rule.caution, t.unit, (x) => saveEvaluation(setOverride(ev, t.id, { ...bounds, caution: x }))),
+      ]);
+      if (rule.modified) fields.append(smallBtn('元に戻す', `${t.name}の目安を元に戻す`, () => saveEvaluation(setOverride(ev, t.id, null))));
+      const edit = el('details', { className: 'bound-edit' }, [el('summary', { text: rule.modified ? '目安を変更（変更あり）' : '目安を変更' }), fields]);
+      edit.open = rule.modified;
+      row.append(edit);
+    }
+    list.append(row);
+  }
+  panel.append(list);
+  if (isModified(ev)) {
+    const reset = el('button', { type: 'button', className: 'btn', text: `${CRITERIA.find((c) => c.id === ev.criterion).name}の変更をすべて元に戻す` });
+    reset.addEventListener('click', () => {
+      if (window.confirm('この基準で変更した目安をすべて元の値に戻します。よろしいですか？')) saveEvaluation(resetOverrides(ev));
+    });
+    panel.append(el('div', { className: 'actions' }, [reset]));
+  }
+}
+
 const SETTINGS_RENDERERS = {
+  evaluation: renderEvaluationPage,
   display: renderDisplayPage,
   unit: renderUnitPage,
   pl: (panel) => renderAccountsPage('pl', panel),

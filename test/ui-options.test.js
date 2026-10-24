@@ -96,12 +96,12 @@ describe('データ移行 version 5 → 6', () => {
     assert.equal(src.version, 5);
     assert.equal(src.settings.theme, undefined);
   });
-  test('migrate・バックアップ復元で v6 になり、金額は変わらない', () => {
+  test('migrate・バックアップ復元で v7 になり、金額は変わらない', () => {
     assert.equal(normalizeData(migrate(v5())).version, CURRENT_VERSION);
-    assert.equal(CURRENT_VERSION, 6);
+    assert.equal(CURRENT_VERSION, 7);
     const r = parseBackup(JSON.stringify({ format: 'finAnalysisTool-backup', formatVersion: 1, exportedAt: null, data: v5() }));
     assert.equal(r.ok, true);
-    assert.equal(r.data.version, 6);
+    assert.equal(r.data.version, 7);
     assert.deepEqual(r.data.periods, getSampleData().periods);
   });
 });

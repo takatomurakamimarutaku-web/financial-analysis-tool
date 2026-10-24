@@ -4,6 +4,7 @@
 import {
   PL_FIELDS, BS_FIELDS, INDICATORS, ADJUSTMENT_CATEGORIES, isNum,
 } from './calc.js';
+import { createDefaultEvaluation, normalizeEvaluation } from './badges.js';
 
 export const AMOUNT_UNITS = [
   { id: 'yen', name: '円', scale: 1000, digits: 0 },
@@ -80,6 +81,7 @@ export function createDefaultSettings() {
     adjustmentCategoryNames: {},
     theme: 'auto',
     negativeStyle: 'minus',
+    evaluation: createDefaultEvaluation(),
   };
 }
 
@@ -159,6 +161,7 @@ export function normalizeSettings(raw) {
     adjustmentCategoryNames: names,
     theme: THEMES.some((t) => t.id === raw.theme) ? raw.theme : d.theme,
     negativeStyle: NEGATIVE_STYLES.some((t) => t.id === raw.negativeStyle) ? raw.negativeStyle : d.negativeStyle,
+    evaluation: normalizeEvaluation(raw.evaluation),
   };
 }
 
