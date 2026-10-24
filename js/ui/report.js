@@ -3,7 +3,9 @@ import { badgeFor, reportNote } from '../badges.js';
 import {
   CHART_ROWS, buildComparison, buildEbitdaBridge, buildNetDebtBreakdown, calcWorkingCapitalSeries, getAdjustmentWarnings, getNetDebtItemWarnings, getWarnings, isNum,
 } from '../calc.js';
-import { CSV_KINDS, csvFileName } from '../csv.js';
+import { CSV_KINDS, buildWorkbookSheets, csvFileName, xlsxFileName } from '../csv.js';
+import { APP_VERSION } from '../pwa.js';
+import { XLSX_MIME, buildXlsx } from '../xlsx.js';
 import { REPORT_DISCLAIMER } from '../help.js';
 import { CF_LIMITATION } from '../cashflow.js';
 import { buildLineChartSvg } from '../chart.js';
@@ -46,6 +48,18 @@ export async function exportCsv(kind, build) {
     if (await saveFile(file)) showToast(`${CSV_KINDS[kind]}のCSVを出力しました`);
   } catch {
     showToast('CSVを出力できませんでした');
+  }
+}
+
+export async function exportXlsx() {
+  saveNow();
+  try {
+    const now = new Date();
+    const bytes = buildXlsx(buildWorkbookSheets(state.data, state.basis, { now, appVersion: APP_VERSION }), now);
+    const file = new File([bytes], xlsxFileName(now), { type: XLSX_MIME });
+    if (await saveFile(file)) showToast('Excel（xlsx）を出力しました');
+  } catch {
+    showToast('Excel（xlsx）を出力できませんでした');
   }
 }
 

@@ -192,6 +192,18 @@ async function shot(page, name) {
     });
 
     if (scheme === 'light') {
+      await step('Excel（xlsx）を4シートで出力できる', async () => {
+        await page.click('#tab-compare');
+        const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#btnXlsx')]);
+        assert.match(dl.suggestedFilename(), /^fin-tool-analysis-\d{4}-\d{2}-\d{2}\.xlsx$/);
+        const xlsxPath = path.join(SHOT_DIR, 'analysis.xlsx');
+        await dl.saveAs(xlsxPath);
+        const buf = fs.readFileSync(xlsxPath);
+        assert.equal(buf.subarray(0, 2).toString(), 'PK', 'ZIP 形式');
+        const text = buf.toString('utf8');
+        for (const name of ['xl/workbook.xml', 'xl/worksheets/sheet4.xml', '概要', '比較表', 'EBITDAブリッジ', 'ネットデット内訳']) assert.ok(text.includes(name), name);
+      });
+
       await step('レポート：作成者・所見・表紙・グラフ・ページ番号の設定が反映・保存される', async () => {
         await page.click('#tab-compare');
         await page.click('#btnReport');

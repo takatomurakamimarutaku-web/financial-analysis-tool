@@ -69,8 +69,8 @@ function periodLabels(data) {
   return (data?.periods ?? []).map((p, i) => p.label || `第${i + 1}期`);
 }
 
-// 比較表 CSV。列：区分, 指標, 単位, 各期の値, 2期目以降の 増減額・増減率(%)
-export function buildComparisonCsv(data, basis = 'end') {
+// 比較表の行（CSV・xlsx 共通）。列：区分, 指標, 単位, 各期の値, 2期目以降の 増減額・増減率(%)
+export function buildComparisonRows(data, basis = 'end') {
   const cmp = buildComparisonWithCashFlow(data, basis);
   const u = unitOf(data?.settings, 'report');
   const labels = periodLabels(data);
@@ -89,11 +89,15 @@ export function buildComparisonCsv(data, basis = 'end') {
   const cfNote = 'キャッシュフローは前期・当期のBSと当期のPLからの推計（最初の期は空欄）';
   rows.push([]);
   rows.push(['注記', `金額単位：${u.name}。%の指標はパーセント値。${note}。%指標の増減額はポイント。${cfNote}。`]);
-  return withBom(toCsv(rows));
+  return rows;
 }
 
-// EBITDAブリッジ CSV。上段：ブリッジ表、下段：調整項目の明細（根拠メモを含む）
-export function buildBridgeCsv(data) {
+export function buildComparisonCsv(data, basis = 'end') {
+  return withBom(toCsv(buildComparisonRows(data, basis)));
+}
+
+// EBITDAブリッジの行。上段：ブリッジ表、下段：調整項目の明細（根拠メモを含む）
+export function buildBridgeRows(data) {
   const b = buildEbitdaBridge(data);
   const u = unitOf(data?.settings, 'report');
   const labels = periodLabels(data);
@@ -111,11 +115,15 @@ export function buildBridgeCsv(data) {
   });
   rows.push([]);
   rows.push(['注記', '正常化EBITDA = 報告EBITDA（営業利益+減価償却費）+ 調整額合計。金額未入力の調整項目は合計に含めない。']);
-  return withBom(toCsv(rows));
+  return rows;
 }
 
-// ネットデット内訳 CSV。上段：内訳表、下段：デットライク・キャッシュライク項目の明細
-export function buildNetDebtCsv(data) {
+export function buildBridgeCsv(data) {
+  return withBom(toCsv(buildBridgeRows(data)));
+}
+
+// ネットデット内訳の行。上段：内訳表、下段：デットライク・キャッシュライク項目の明細
+export function buildNetDebtRows(data) {
   const b = buildNetDebtBreakdown(data);
   const u = unitOf(data?.settings, 'report');
   const amt = (v) => (isNum(v) ? scaled(v, '千円', u.scale) : '');
@@ -132,7 +140,39 @@ export function buildNetDebtCsv(data) {
   });
   rows.push([]);
   rows.push(['注記', `金額単位：${u.name}。調整後ネットデット = 有利子負債 + デットライク項目 − 現預金 − キャッシュライク項目。現預金・キャッシュライク項目は減算のため負の値で表示。`]);
-  return withBom(toCsv(rows));
+  return rows;
+}
+
+export function buildNetDebtCsv(data) {
+  return withBom(toCsv(buildNetDebtRows(data)));
+}
+
+// Excel（xlsx）のシート。CSV の3種類と同じ内容に「概要」を加える。数値は数値のセルになる
+export function buildWorkbookSheets(data, basis = 'end', { now = new Date(), appVersion = '' } = {}) {
+  const u = unitOf(data?.settings, 'report');
+  const pad = (n) => String(n).padStart(2, '0');
+  const at = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  const n = data?.periods?.length ?? 0;
+  const summary = [
+    ['項目', '内容'],
+    ['会社名', data?.companyName || '（未入力）'],
+    ['出力日時', at],
+    ['期の数', n],
+    ['金額単位', u.name],
+    ['比較表の基準', basis === 'average' ? '平均残高ベース' : '期末残高ベース'],
+    ['作成', `数字のミカタ${appVersion ? ` ${appVersion}` : ''}（この端末で作成。外部には送信していません）`],
+  ];
+  return [
+    { name: '概要', rows: summary, widths: [16, 60] },
+    { name: CSV_KINDS.comparison, rows: buildComparisonRows(data, basis), widths: [16, 34, 8] },
+    { name: CSV_KINDS.bridge, rows: buildBridgeRows(data) },
+    { name: CSV_KINDS.netDebt, rows: buildNetDebtRows(data) },
+  ];
+}
+
+export function xlsxFileName(now = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `fin-tool-analysis-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.xlsx`;
 }
 
 // ファイル名は英数字のみ（日本語のファイル名は環境によって「download」などに置き換わるため）

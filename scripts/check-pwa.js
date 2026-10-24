@@ -4,7 +4,22 @@ import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ALLOWED_URLS = ['http://www.w3.org/2000/svg'];
+// 通信先ではなく XML の名前空間・関係の種類を表す識別子（SVG、xlsx の SpreadsheetML）
+const ALLOWED_URLS = [
+  'http://www.w3.org/2000/svg',
+  'http://www.w3.org/2001/XMLSchema-instance',
+  'http://purl.org/dc/elements/1.1/',
+  'http://purl.org/dc/terms/',
+  'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
+  'http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument',
+  'http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles',
+  'http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet',
+  'http://schemas.openxmlformats.org/package/2006/content-types',
+  'http://schemas.openxmlformats.org/package/2006/metadata/core-properties',
+  'http://schemas.openxmlformats.org/package/2006/relationships',
+  'http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties',
+  'http://schemas.openxmlformats.org/spreadsheetml/2006/main',
+];
 
 function read(root, rel) {
   return readFileSync(join(root, rel), 'utf8');

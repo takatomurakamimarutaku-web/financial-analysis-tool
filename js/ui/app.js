@@ -21,7 +21,7 @@ import { initKeyboardNavigation } from './a11y.js';
 import { initLock } from './lock.js';
 import { renderCashFlowInput } from './cashflow.js';
 import { LINE_LISTS, onAddLineItem, renderNetDebtSummary } from './netdebt.js';
-import { exportCsv, onDeleteAll, renderReport, renderReportOptions } from './report.js';
+import { exportCsv, exportXlsx, onDeleteAll, renderReport, renderReportOptions } from './report.js';
 import { renderSettings, toggle } from './settings-view.js';
 import { onCsvFile, onCsvImportClick } from './import-view.js';
 
@@ -129,6 +129,7 @@ export function init() {
   $('btnCsvCompare').addEventListener('click', () => exportCsv('comparison', () => buildComparisonCsv(state.data, state.basis)));
   $('btnCsvBridge').addEventListener('click', () => exportCsv('bridge', () => buildBridgeCsv(state.data)));
   $('btnCsvNetDebt').addEventListener('click', () => exportCsv('netDebt', () => buildNetDebtCsv(state.data)));
+  $('btnXlsx').addEventListener('click', exportXlsx);
   $('btnReport').addEventListener('click', () => setView('report'));
   $('btnReportBack').addEventListener('click', () => setView('compare'));
   $('btnPrint').addEventListener('click', () => window.print());
