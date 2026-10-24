@@ -20,18 +20,23 @@
   <header class="app-header">
     <h1>財務分析ツール</h1>
     <p class="app-note">金額単位：千円 ／ データはこの端末のブラウザ内にのみ保存されます</p>
+  </header>
+
+  <!-- 画面上部に固定するナビゲーション（タブ＋項目へのジャンプ） -->
+  <div class="sticky-nav">
     <nav class="tabs" role="tablist" aria-label="画面切替">
       <button type="button" role="tab" id="tab-input" class="tab" aria-controls="view-input" aria-selected="true" data-view="input">入力</button>
       <button type="button" role="tab" id="tab-compare" class="tab" aria-controls="view-compare" aria-selected="false" data-view="compare">比較</button>
     </nav>
-  </header>
+    <nav id="sectionNav" class="section-nav" aria-label="項目へ移動"></nav>
+  </div>
 
   <main class="app-main">
     <div id="warnings-global" class="warnings" aria-live="polite"></div>
 
     <!-- 入力タブ -->
     <div id="view-input" role="tabpanel" aria-labelledby="tab-input">
-      <section class="panel" aria-label="基本情報">
+      <section id="sec-basic" class="panel" aria-label="基本情報">
         <label class="field">
           <span class="field-label">会社名</span>
           <input id="companyName" type="text" autocomplete="off" placeholder="例：サンプル株式会社">
@@ -60,7 +65,7 @@
         </div>
       </section>
 
-      <section class="panel backup" aria-label="バックアップ">
+      <section id="sec-backup" class="panel backup" aria-label="バックアップ">
         <div class="backup-head">
           <span class="field-label">データのバックアップ</span>
           <span id="lastBackup" class="backup-last"></span>
@@ -78,11 +83,11 @@
 
       <div class="layout">
         <section class="inputs" aria-label="入力">
-          <details class="panel input-group" open>
+          <details id="sec-pl" class="panel input-group" open>
             <summary>損益計算書（PL）</summary>
             <div id="plFields" class="field-list"></div>
           </details>
-          <details class="panel input-group" open>
+          <details id="sec-bs" class="panel input-group" open>
             <summary>貸借対照表（BS）</summary>
             <div id="bsFields" class="field-list"></div>
           </details>
@@ -91,7 +96,7 @@
         <section id="results" class="results" aria-label="分析結果（期末残高ベース）"></section>
       </div>
 
-      <section class="panel adjustments" aria-label="正常化EBITDA">
+      <section id="sec-adj" class="panel adjustments" aria-label="正常化EBITDA">
         <h2 class="panel-title">正常化EBITDA（<span id="adjPeriodName"></span>）</h2>
         <p class="note">EBITDAに加算する調整はプラス、減算する調整はマイナスで入力します。根拠メモは必ず残してください。</p>
         <div id="adjWarnings" class="warnings"></div>
@@ -101,7 +106,7 @@
         <table id="bridgeSingle" class="bridge-table"></table>
       </section>
 
-      <section class="panel netdebt" aria-label="運転資本・ネットデット">
+      <section id="sec-nd" class="panel netdebt" aria-label="運転資本・ネットデット">
         <h2 class="panel-title">運転資本・ネットデット（<span id="ndPeriodName"></span>）</h2>
         <h3 class="sub-title">運転資本（トレード）</h3>
         <table id="wcSingle" class="bridge-table"></table>
@@ -126,7 +131,7 @@
 
     <!-- 比較タブ -->
     <div id="view-compare" role="tabpanel" aria-labelledby="tab-compare" hidden>
-      <section class="panel">
+      <section id="sec-cmp-setting" class="panel">
         <div class="compare-head">
           <div class="segmented" role="radiogroup" aria-label="計算の基準">
             <button type="button" class="seg" role="radio" data-basis="end" aria-checked="true">期末残高</button>
@@ -140,7 +145,7 @@
         <p id="basisNote" class="note"></p>
       </section>
 
-      <section class="panel" aria-label="出力">
+      <section id="sec-export" class="panel" aria-label="出力">
         <span class="field-label">出力</span>
         <div class="actions export-actions">
           <button type="button" id="btnCsvCompare" class="btn">比較表CSV</button>
@@ -151,20 +156,20 @@
         <p class="note">CSVはExcelで開けるBOM付きUTF-8です。比較表CSVは、いま選んでいる基準（期末残高／平均残高）で出力します。</p>
       </section>
 
-      <section class="panel" aria-label="比較表">
+      <section id="sec-cmp-table" class="panel" aria-label="比較表">
         <div class="table-scroll" tabindex="0" aria-label="比較表（横にスクロールできます）">
           <table id="compareTable" class="compare-table"></table>
         </div>
       </section>
 
-      <section class="panel" aria-label="EBITDAブリッジ">
+      <section id="sec-bridge" class="panel" aria-label="EBITDAブリッジ">
         <h2 class="panel-title">EBITDAブリッジ（千円）</h2>
         <div class="table-scroll" tabindex="0" aria-label="EBITDAブリッジ（横にスクロールできます）">
           <table id="bridgeTable" class="compare-table bridge-compare"></table>
         </div>
       </section>
 
-      <section class="panel" aria-label="運転資本の推移">
+      <section id="sec-wc" class="panel" aria-label="運転資本の推移">
         <h2 class="panel-title">運転資本の推移（千円）</h2>
         <div class="table-scroll" tabindex="0" aria-label="運転資本の推移（横にスクロールできます）">
           <table id="wcTable" class="compare-table bridge-compare"></table>
@@ -172,14 +177,14 @@
         <p class="note">参考：平均運転資本は、本来は月次残高で算定すべきものであり、本値は期末残高による簡易的な目安です。</p>
       </section>
 
-      <section class="panel" aria-label="ネットデット内訳">
+      <section id="sec-ndb" class="panel" aria-label="ネットデット内訳">
         <h2 class="panel-title">ネットデット内訳（千円）</h2>
         <div class="table-scroll" tabindex="0" aria-label="ネットデット内訳（横にスクロールできます）">
           <table id="ndTable" class="compare-table bridge-compare"></table>
         </div>
       </section>
 
-      <section aria-label="推移グラフ">
+      <section id="sec-charts" aria-label="推移グラフ">
         <h2 class="section-title">主要指標の推移</h2>
         <div id="charts" class="charts"></div>
       </section>

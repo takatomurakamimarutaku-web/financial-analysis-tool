@@ -211,7 +211,6 @@ input[type="text"]:focus { outline: 2px solid var(--primary); outline-offset: -1
 .tabs {
   display: flex;
   gap: 4px;
-  margin-top: 12px;
   border-bottom: 1px solid var(--border);
 }
 .tab {
@@ -455,10 +454,47 @@ input[type="text"]:focus { outline: 2px solid var(--primary); outline-offset: -1
   @page { size: A4 portrait; margin: 12mm; }
   body { background: #fff; }
   /* レポート表示中に印刷したときはレポートだけを出す */
-  body.reporting .app-header, body.reporting .app-main, .update-bar, .toast, .report-toolbar, .report-help { display: none !important; }
+  body.reporting .app-header, body.reporting .sticky-nav, body.reporting .app-main, .update-bar, .toast, .report-toolbar, .report-help { display: none !important; }
   .report-view { padding: 0; }
   .report { border: none; border-radius: 0; padding: 0; max-width: none; font-size: 9.5pt; overflow: visible; }
   .report h2 { break-after: avoid; }
   .report table, .report section { break-inside: avoid; }
 }
 .report td.text:first-child { white-space: nowrap; }
+
+/* ---- 項目へのジャンプ（画面上部に固定） ---- */
+.sticky-nav {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  background: var(--bg);
+  padding: 0 16px;
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+  box-shadow: 0 1px 0 var(--border);
+  margin-bottom: 12px;
+}
+.sticky-nav[hidden] { display: none; }
+.section-nav {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 8px 0;
+}
+.section-nav::-webkit-scrollbar { display: none; }
+.section-link {
+  flex: 0 0 auto;
+  font-size: 13px;
+  padding: 5px 11px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.section-link[aria-current="true"] { border-color: var(--primary); color: var(--primary); font-weight: 600; }
+/* ジャンプ先が固定ナビの下に隠れないようにする */
+.app-main section[id], .app-main details[id] { scroll-margin-top: var(--nav-height, 104px); }
