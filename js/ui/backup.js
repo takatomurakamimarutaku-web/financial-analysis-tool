@@ -2,10 +2,16 @@
 import { buildResultText, calcIndicators, getWarnings } from '../calc.js';
 import { indicatorList } from '../settings.js';
 import {
-  backupFileName, backupToJson, clearUndo, createEmptyData, createUndoSnapshot, getLastBackupAt, getSampleMultiData, loadUndo, needsBackupReminder, normalizeData, parseBackup, saveUndo, setLastBackupAt,
+  backupFileName, backupToJson, createEmptyData, getLastBackupAt, getSampleMultiData, needsBackupReminder, normalizeData, setLastBackupAt,
 } from '../store.js';
+import {
+  MAX_COMPANIES, activeData, addCompany, clearUndo, companyLabel, createUndoSnapshot, loadUndo, parseAnyBackup, saveUndo,
+  workspaceBackupFileName,
+} from '../workspace.js';
+import { renderCompanyBar } from './companies.js';
+import { openModal } from './dialogs.js';
 import { hasAnyInput, update } from './app.js';
-import { $, currentPeriod, days, el, fmt, formatDateTime, saveNow, settings, showToast, state } from './core.js';
+import { $, currentPeriod, days, el, fmt, formatDateTime, saveNow, setWorkspace, settings, showToast, state } from './core.js';
 import { periodName, renderForm } from './input.js';
 import { saveFile } from './report.js';
 import { renderSettings } from './settings-view.js';
@@ -25,10 +31,16 @@ export function downloadFile(file) {
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
-export async function onExport() {
+// scope = 'company'（選択中の会社だけ）| 'all'（全社）
+export async function onExport(scope = 'company') {
   saveNow();
   const now = new Date();
-  const file = new File([backupToJson(state.data, now)], backupFileName(now), { type: 'application/json' });
+  const all = scope === 'all';
+  const file = new File(
+    [backupToJson(all ? state.workspace : state.data, now)],
+    all ? workspaceBackupFileName(now) : backupFileName(now),
+    { type: 'application/json' },
+  );
   try {
     // iPhone では共有シートから「"ファイル"に保存」できる
     if (!(await saveFile(file))) return; // 共有をキャンセルした
@@ -38,7 +50,7 @@ export async function onExport() {
   }
   setLastBackupAt(now);
   renderBackupStatus();
-  showToast('バックアップを作成しました');
+  showToast(all ? `全社（${state.workspace.companies.length}社）のバックアップを作成しました` : `「${companyLabel(state.data)}」のバックアップを作成しました`);
 }
 
 export function onImportClick() {
@@ -56,22 +68,66 @@ export async function onImportFile(e) {
     showToast('ファイルを読み込めませんでした');
     return;
   }
-  const result = parseBackup(text);
+  const result = parseAnyBackup(text);
   if (!result.ok) {
     window.alert(`復元できませんでした。\n${result.error}`);
     return;
   }
   const when = result.exportedAt ? `（${formatDateTime(new Date(result.exportedAt))} 作成）` : '';
-  if (!window.confirm(`バックアップ${when}で現在のデータを上書きします。よろしいですか？`)) return;
-  const undoable = hasAnyInput() && keepUndo('restore');
-  state.data = result.data;
+  if (result.kind === 'workspace') {
+    const n = result.workspace.companies.length;
+    if (!window.confirm(`全社のバックアップ${when}（${n}社）で、この端末のすべての会社のデータと設定を置き換えます。よろしいですか？`)) return;
+    restoreWorkspace(result.workspace, '全社のバックアップから復元しました');
+    return;
+  }
+  // 1社分のバックアップ：新しい会社として追加するか、選択中の会社に上書きするかを選ぶ
+  const name = companyLabel(result.data);
+  const actions = [];
+  if (state.workspace.companies.length < MAX_COMPANIES) {
+    actions.push({ label: '新しい会社として追加', primary: true, onClick: () => restoreCompany(result.data, 'add') });
+  }
+  actions.push({ label: `「${companyLabel(state.data)}」に上書き`, onClick: () => restoreCompany(result.data, 'overwrite') });
+  actions.push({ label: 'やめる' });
+  openModal({
+    title: '1社分のバックアップを復元',
+    body: [
+      el('p', { text: `「${name}」のバックアップ${when}です。` }),
+      el('p', { className: 'note', text: '「上書き」は選択中の会社のデータと、全社共通の設定をバックアップの内容に置き換えます。「追加」は今の設定のまま会社を追加します。' }),
+    ],
+    actions,
+  });
+}
+
+function restoreWorkspace(ws, message) {
+  const undoable = keepUndo('restore');
+  setWorkspace(ws);
+  state.basis = state.data.settings.analysis.defaultBasis;
+  rerenderAll();
+  saveNow();
+  showUndoToast(message, undoable);
+}
+
+function restoreCompany(data, mode) {
+  saveNow();
+  if (mode === 'add') {
+    restoreWorkspace(addCompany(state.workspace, { ...data, settings: state.workspace.settings }), `「${companyLabel(data)}」を追加しました`);
+    return;
+  }
+  const undoable = keepUndo('restore');
+  state.data = data;
   state.selected = state.data.periods.length - 1;
   state.basis = state.data.settings.analysis.defaultBasis;
-  if (state.view === 'settings') renderSettings();
-  renderForm();
-  update();
+  rerenderAll();
   saveNow();
   showUndoToast('バックアップから復元しました', undoable);
+}
+
+// 会社の切り替え・復元などで画面全体を描き直す
+export function rerenderAll() {
+  if (state.view === 'settings') renderSettings();
+  renderCompanyBar();
+  renderForm();
+  update();
 }
 
 export function onLoadSample() {
@@ -99,7 +155,7 @@ export function onClear() {
 // 操作の直前の状態を退避する。退避できたら true
 export function keepUndo(action) {
   saveNow();
-  return saveUndo(createUndoSnapshot(state.data, action, state.selected));
+  return saveUndo(createUndoSnapshot(state.workspace, action, state.selected));
 }
 
 export function showUndoToast(msg, undoable) {
@@ -113,13 +169,10 @@ export function onUndo() {
     showToast('元に戻せるデータがありません');
     return;
   }
-  state.data = u.data;
-  state.selected = u.selected;
+  setWorkspace(u.workspace, u.selected);
   state.basis = state.data.settings.analysis.defaultBasis;
   clearUndo();
-  if (state.view === 'settings') renderSettings();
-  renderForm();
-  update();
+  rerenderAll();
   saveNow();
   showToast(`「${u.label}」の前の状態に戻しました`);
 }

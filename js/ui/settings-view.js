@@ -9,9 +9,11 @@ import { APP_VERSION, checkForUpdate, isStoragePersisted } from '../pwa.js';
 import {
   AMOUNT_UNITS, BACKUP_REMINDER_CHOICES, DIGIT_LIMITS, MAX_CUSTOM_ACCOUNTS, NEGATIVE_STYLES, OTHER_DETAIL_LABEL, THEMES, UNIT_SCOPES, accountTree, addCustomAccount, commonUnit, createDefaultSettings, indicatorList, moveAccount, moveIndicator, removeCustomAccount, renameAccount, renameCategory, setAccountHidden, setIndicatorHidden, setUnit, unitOf, updateSettings,
 } from '../settings.js';
-import { getLastBackupAt, loadUndo } from '../store.js';
+import { getLastBackupAt } from '../store.js';
+import { loadUndo } from '../workspace.js';
 import { update } from './app.js';
 import { onExport, onImportClick, onUndo } from './backup.js';
+import { renderCompaniesPage } from './companies.js';
 import { $, days, el, evaluation, formatDateTime, fv, settings, showToast, state } from './core.js';
 import { changelogList, helpBody, openOnboarding } from './dialogs.js';
 import { renderForm } from './input.js';
@@ -20,6 +22,7 @@ import { onDeleteAll } from './report.js';
 
 
 export const SETTINGS_PAGES = [
+  { id: 'companies', title: '会社の管理', summary: () => `${state.workspace.companies.length}社を登録` },
   { id: 'unit', title: '金額の単位', summary: () => (commonUnit(settings()) ? `すべて${commonUnit(settings()).name}` : '区分ごとに設定') },
   { id: 'pl', title: 'PL科目', summary: () => accountSummary('pl') },
   { id: 'bs', title: 'BS科目', summary: () => accountSummary('bs') },
@@ -300,7 +303,8 @@ export function renderDataPage(panel) {
     el('label', { className: 'field' }, [el('span', { className: 'field-label', text: 'バックアップの案内' }), select]),
     el('p', { className: 'note', text: `最終バックアップ：${last ? formatDateTime(last) : '未実施'}。前回のバックアップから設定した日数がたつと、入力タブに案内を表示します。` }),
     el('div', { className: 'actions' }, [
-      btn('バックアップを保存', '', async () => { await onExport(); renderSettings(); }),
+      btn('この会社のバックアップ', '', async () => { await onExport('company'); renderSettings(); }),
+      btn('全社のバックアップ', '', async () => { await onExport('all'); renderSettings(); }),
       btn('バックアップから復元', '', onImportClick),
     ]),
     ...undoSection(),
@@ -324,7 +328,7 @@ export function undoSection() {
   });
   return [
     el('h3', { className: 'sub-title', text: '元に戻す' }),
-    el('p', { className: 'note', text: '直前の「クリア」「期の削除」「バックアップからの復元」「サンプルデータの読込」の前の状態を1つだけ、この端末内に退避しています。' }),
+    el('p', { className: 'note', text: '直前の「クリア」「期の削除」「バックアップからの復元」「サンプルデータの読込」「会社の削除」の前の状態（全社分）を1つだけ、この端末内に退避しています。' }),
     el('div', { className: 'actions' }, [b]),
   ];
 }
@@ -515,6 +519,7 @@ export function renderGlossaryPage(panel) {
 }
 
 export const SETTINGS_RENDERERS = {
+  companies: renderCompaniesPage,
   glossary: renderGlossaryPage,
   evaluation: renderEvaluationPage,
   display: renderDisplayPage,

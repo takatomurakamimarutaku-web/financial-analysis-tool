@@ -161,8 +161,13 @@ async function shot(page, name) {
 
         await page.click('#btnClear');
         await page.setInputFiles('#importFile', backupPath);
+        await page.waitForSelector('#modal:not([hidden])');
+        await page.click('#modalActions >> text=に上書き');
         await page.waitForTimeout(300);
-        assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('finAnalysisTool.data'))).periods.length, 3, '復元で3期に戻る');
+        const ws = JSON.parse(await page.evaluate(() => localStorage.getItem('finAnalysisTool.data')));
+        assert.equal(ws.version, 8);
+        assert.equal(ws.companies.length, 1);
+        assert.equal(ws.companies[0].periods.length, 3, '復元で3期に戻る');
       });
 
       await step('期の削除を元に戻せる（設定画面から）', async () => {
@@ -175,6 +180,54 @@ async function shot(page, name) {
         await page.click('#settingsBody >> text=「期の削除」の前の状態に戻す');
         await page.click('#tab-input');
         assert.equal((await page.$$('#periodChips .chip:not(.chip-add)')).length, 3);
+      });
+
+      await step('複数社：追加・切り替え・全社バックアップ・1社分を追加で復元・会社の削除を元に戻す', async () => {
+        const companyNames = () => page.evaluate(() => JSON.parse(localStorage.getItem('finAnalysisTool.data')).companies.map((c) => c.companyName));
+        await page.click('#companyBar .company-switch');
+        await page.click('#modalActions >> text=会社を追加');
+        await page.fill('#companyName', 'B商事');
+        await page.locator('#plFields input').first().fill('5000');
+        await page.locator('#plFields input').first().press('Tab');
+        await page.waitForTimeout(400);
+        assert.deepEqual(await companyNames(), ['サンプル株式会社', 'B商事']);
+        assert.match(await page.textContent('#companyBar'), /B商事.*2\/2/);
+        await page.click('#companyBar .company-switch');
+        await page.click('.company-pick-item >> text=サンプル株式会社');
+        assert.equal(await page.inputValue('#companyName'), 'サンプル株式会社');
+        assert.equal((await page.$$('#periodChips .chip:not(.chip-add)')).length, 3);
+        await shot(page, 'companies-input');
+
+        const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#btnExportAll')]);
+        const allPath = path.join(SHOT_DIR, 'backup-all.json');
+        await dl.saveAs(allPath);
+        assert.match(dl.suggestedFilename(), /backup-all/);
+        assert.equal(JSON.parse(fs.readFileSync(allPath, 'utf8')).data.companies.length, 2);
+
+        // 1社分のバックアップを「新しい会社として追加」
+        await page.setInputFiles('#importFile', backupPath);
+        await page.waitForSelector('#modal:not([hidden])');
+        await page.click('#modalActions >> text=新しい会社として追加');
+        await page.waitForTimeout(300);
+        assert.equal((await companyNames()).length, 3);
+
+        // 設定の会社の管理から削除 → 元に戻す
+        await page.click('#tab-settings');
+        if (await page.isVisible('.settings-back')) await page.click('.settings-back');
+        await page.click('.settings-item >> text=会社の管理');
+        await shot(page, 'companies-settings');
+        await page.click('.company-row >> nth=1 >> text=削除');
+        await page.waitForTimeout(200);
+        assert.deepEqual(await companyNames(), ['サンプル株式会社', 'サンプル株式会社']);
+        await page.click('#toast .toast-action');
+        await page.waitForTimeout(200);
+        assert.deepEqual(await companyNames(), ['サンプル株式会社', 'B商事', 'サンプル株式会社']);
+
+        // 全社のバックアップで置き換え
+        await page.setInputFiles('#importFile', allPath);
+        await page.waitForTimeout(300);
+        assert.deepEqual(await companyNames(), ['サンプル株式会社', 'B商事']);
+        await page.click('#tab-input');
       });
 
       await step('保存できないときは画面上部に常に警告を出す', async () => {
@@ -222,6 +275,22 @@ async function shot(page, name) {
     });
     await page.context().close();
   }
+
+  await step('Service Worker 有効時もアプリはオフラインで開け、feedback/ はアプリに置き換わらない', async () => {
+    const ctx = await browser.newContext({ viewport: { width: 375, height: 812 }, serviceWorkers: 'allow' });
+    const p = await ctx.newPage();
+    await p.goto(base);
+    await p.evaluate(() => navigator.serviceWorker.ready.then(() => true));
+    await p.reload();
+    await p.waitForFunction(() => navigator.serviceWorker.controller !== null);
+    await p.goto(`${base}feedback/`);
+    assert.equal(await p.title(), '数字のミカタ 感想フォーム');
+    await ctx.setOffline(true);
+    await p.goto(base);
+    assert.equal(await p.title(), '数字のミカタ');
+    await ctx.setOffline(false);
+    await ctx.close();
+  });
 
   await browser.close();
   server.close();

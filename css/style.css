@@ -943,3 +943,35 @@ input[type="text"][aria-invalid="true"] { border-color: var(--danger); }
 .changelog-entry { margin-bottom: 8px; }
 .changelog-head { margin: 0; font-weight: 600; font-size: 13px; }
 .changelog ul { margin: 2px 0 0; padding-left: 1.2em; font-size: 13px; line-height: 1.7; }
+
+/* ---- 複数社 ---- */
+.company-bar { margin: 0 0 10px; }
+.company-switch {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); color: var(--text); font: inherit; font-size: 14px; text-align: left; cursor: pointer;
+}
+.company-switch-label { color: var(--muted); font-size: 12px; flex: none; }
+.company-switch-name { font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.company-switch-count { margin-left: auto; color: var(--muted); font-size: 12px; flex: none; }
+.company-switch-arrow { color: var(--muted); flex: none; }
+body.reporting .company-bar { display: none; }
+.company-pick { display: grid; gap: 6px; }
+.company-pick-item {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.company-pick-item.current { border-color: var(--primary); box-shadow: inset 3px 0 0 var(--primary); }
+.company-pick-name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.company-pick-meta { color: var(--muted); font-size: 12px; flex: none; }
+.company-list { display: grid; gap: 8px; margin: 8px 0; }
+.company-row { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; }
+.company-row.current { border-color: var(--primary); }
+.company-row-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.company-row-name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.company-row-meta { color: var(--muted); font-size: 12px; flex: none; }
+.company-row-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.company-row-actions .btn-small { width: auto; padding: 4px 10px; }
+.toast { width: max-content; }
+#toastText { flex: 1 1 auto; min-width: 0; }

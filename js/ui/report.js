@@ -9,8 +9,10 @@ import { categoryLabel, rowLabel } from '../settings.js';
 import { createEmptyData, deleteAllData } from '../store.js';
 import { formatSigned, renderAdjustmentSummary } from './adjustments.js';
 import { downloadFile, renderBackupStatus } from './backup.js';
+import { createWorkspace } from '../workspace.js';
+import { renderCompanyBar } from './companies.js';
 import {
-  $, cancelPendingSave, days, el, evaluation, fa, fmt, formatDateTime, fv, saveNow, settings, showToast, state, unitName,
+  $, cancelPendingSave, days, el, evaluation, fa, fmt, formatDateTime, fv, saveNow, setWorkspace, settings, showToast, state, unitName,
 } from './core.js';
 import { periodName, renderForm, renderInputResults, renderInputWarnings } from './input.js';
 import { pctText, renderNetDebtSummary } from './netdebt.js';
@@ -165,15 +167,15 @@ export function renderReport() {
 }
 
 export function onDeleteAll() {
-  if (!window.confirm('この端末に保存されているすべてのデータ（全期の入力・調整項目・最終バックアップ日時）を削除します。元に戻せません。\n\n削除する前にバックアップを保存することをおすすめします。削除してよろしいですか？')) return;
+  if (!window.confirm(`この端末に保存されているすべてのデータ（全${state.workspace.companies.length}社の入力・設定・最終バックアップ日時）を削除します。元に戻せません。\n\n削除する前に「全社のバックアップ」を保存することをおすすめします。削除してよろしいですか？`)) return;
   cancelPendingSave();
   const { ok, error } = deleteAllData();
   if (!ok) {
     showToast(error);
     return;
   }
-  state.data = createEmptyData();
-  state.selected = 0;
+  setWorkspace(createWorkspace());
+  renderCompanyBar();
   renderForm();
   renderInputWarnings();
   renderInputResults();

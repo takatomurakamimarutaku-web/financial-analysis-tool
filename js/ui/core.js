@@ -2,7 +2,8 @@
 import { criterionLabel } from '../badges.js';
 import { daysInYearOf, formatAmount, formatValue, isNum, negativeMark } from '../calc.js';
 import { formatOptions, toDisplayAmount, unitOf } from '../settings.js';
-import { createEmptyData, saveData } from '../store.js';
+import { createEmptyData } from '../store.js';
+import { activeData, createWorkspace, saveWorkspace, withActiveData } from '../workspace.js';
 import { setView } from './app.js';
 import { renderGlobalWarnings } from './input.js';
 import { toggle } from './settings-view.js';
@@ -10,7 +11,8 @@ import { toggle } from './settings-view.js';
 export const SAVE_DELAY_MS = 300;
 
 export const state = {
-  data: createEmptyData(),
+  workspace: createWorkspace(), // 全社のデータ（保存の単位）
+  data: createEmptyData(), // 選択中の会社のデータ（画面はこれを扱う。保存時に workspace に書き戻す）
   storageError: null,
   selected: 0, // 入力タブで選択中の期
   view: 'input',
@@ -111,6 +113,14 @@ export function criterionBar() {
 }
 
 
+// ワークスペース（全社）を画面に読み込む。selected 省略時は最後の期を選ぶ
+export function setWorkspace(ws, selected = null) {
+  state.workspace = ws;
+  state.data = activeData(ws);
+  const n = state.data.periods.length;
+  state.selected = Number.isInteger(selected) ? Math.min(Math.max(selected, 0), n - 1) : n - 1;
+}
+
 export function scheduleSave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveNow, SAVE_DELAY_MS);
@@ -129,7 +139,8 @@ export function hasPendingSave() {
 export function saveNow() {
   clearTimeout(saveTimer);
   saveTimer = null;
-  const { ok, error } = saveData(state.data);
+  state.workspace = withActiveData(state.workspace, state.data);
+  const { ok, error } = saveWorkspace(state.workspace);
   const next = ok ? null : error;
   if (state.storageError !== next) {
     state.storageError = next;

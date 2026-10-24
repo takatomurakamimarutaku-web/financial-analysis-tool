@@ -94,6 +94,7 @@
 
   <main class="app-main">
     <div id="warnings-global" class="warnings" aria-live="polite"></div>
+    <div id="companyBar" class="company-bar"></div>
 
     <!-- 入力タブ -->
     <div id="view-input" role="tabpanel" aria-labelledby="tab-input">
@@ -138,7 +139,8 @@
         </div>
         <p id="backupReminder" class="note backup-reminder" hidden>しばらくバックアップしていません。ホーム画面アプリの保存データは、iPhoneの空き容量不足などで消えることがあるため、ときどきバックアップしておくと安心です。</p>
         <div class="actions">
-          <button type="button" id="btnExport" class="btn">バックアップを保存</button>
+          <button type="button" id="btnExport" class="btn">この会社のバックアップ</button>
+          <button type="button" id="btnExportAll" class="btn">全社のバックアップ</button>
           <button type="button" id="btnImport" class="btn">バックアップから復元</button>
           <button type="button" id="btnDeleteAll" class="btn btn-danger">すべてのデータを削除</button>
           <input type="file" id="importFile" accept="application/json,.json" hidden>

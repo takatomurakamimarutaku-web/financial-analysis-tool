@@ -3,11 +3,13 @@ import { CASH_LIKE_EXAMPLES, DEBT_LIKE_EXAMPLES } from '../calc.js';
 import { LAST_VERSION_KEY } from '../changelog.js';
 import { buildBridgeCsv, buildComparisonCsv, buildNetDebtCsv } from '../csv.js';
 import { APP_VERSION, registerServiceWorker, requestPersistentStorage } from '../pwa.js';
-import { hasAnyData, loadData } from '../store.js';
+import { hasAnyData } from '../store.js';
+import { loadWorkspace } from '../workspace.js';
+import { renderCompanyBar } from './companies.js';
 import { onAddAdjustment, renderAdjustmentSummary } from './adjustments.js';
 import { onClear, onCopy, onExport, onImportClick, onImportFile, onLoadSample, renderBackupStatus } from './backup.js';
 import { renderCompare } from './compare.js';
-import { $, currentPeriod, el, hasPendingSave, saveNow, scheduleSave, settings, state } from './core.js';
+import { $, currentPeriod, el, hasPendingSave, saveNow, scheduleSave, setWorkspace, settings, state } from './core.js';
 import { renderDiagrams } from './diagram.js';
 import { closeModal, openOnboarding, readOnboarded, showChangesIfUpdated } from './dialogs.js';
 import {
@@ -26,6 +28,7 @@ export function setView(view) {
   $('view-compare').hidden = view !== 'compare';
   $('view-settings').hidden = view !== 'settings';
   $('view-diagram').hidden = view !== 'diagram';
+  $('companyBar').hidden = view === 'settings' || view === 'report';
   const reporting = view === 'report';
   document.body.classList.toggle('reporting', reporting);
   document.querySelector('.app-header').hidden = reporting;
@@ -57,12 +60,12 @@ export function hasAnyInput() {
 }
 
 export function init() {
-  window.__fatalBackup = () => { onExport().catch(() => window.__saveRawBackup?.()); };
-  const { data, error } = loadData();
-  state.data = data;
+  window.__fatalBackup = () => { onExport('all').catch(() => window.__saveRawBackup?.()); };
+  const { workspace, error } = loadWorkspace();
+  setWorkspace(workspace);
   state.storageError = error;
-  state.selected = data.periods.length - 1;
-  state.basis = data.settings.analysis.defaultBasis;
+  state.basis = state.data.settings.analysis.defaultBasis;
+  renderCompanyBar();
   renderForm();
   renderGlobalWarnings();
   renderSummary();
@@ -72,6 +75,7 @@ export function init() {
 
   $('companyName').addEventListener('input', (e) => {
     state.data.companyName = e.target.value;
+    renderCompanyBar();
     scheduleSave();
   });
   $('periodLabel').addEventListener('input', (e) => {
@@ -103,7 +107,8 @@ export function init() {
   $('btnAddCashLike').addEventListener('click', () => onAddLineItem(LINE_LISTS[1]));
   $('debtLikeExamples').replaceChildren(...DEBT_LIKE_EXAMPLES.map((v) => el('option', { value: v })));
   $('cashLikeExamples').replaceChildren(...CASH_LIKE_EXAMPLES.map((v) => el('option', { value: v })));
-  $('btnExport').addEventListener('click', onExport);
+  $('btnExport').addEventListener('click', () => onExport('company'));
+  $('btnExportAll').addEventListener('click', () => onExport('all'));
   $('btnDeleteAll').addEventListener('click', onDeleteAll);
   $('btnCsvCompare').addEventListener('click', () => exportCsv('comparison', () => buildComparisonCsv(state.data, state.basis)));
   $('btnCsvBridge').addEventListener('click', () => exportCsv('bridge', () => buildBridgeCsv(state.data)));
@@ -113,7 +118,7 @@ export function init() {
   $('btnPrint').addEventListener('click', () => window.print());
   $('btnImport').addEventListener('click', onImportClick);
   $('importFile').addEventListener('change', onImportFile);
-  $('btnStorageBackup').addEventListener('click', onExport);
+  $('btnStorageBackup').addEventListener('click', () => onExport('all'));
   $('modal').addEventListener('click', (e) => { if (e.target === $('modal')) closeModal(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 

@@ -3,7 +3,7 @@
 // 外部へのリクエストは行わない（同一オリジンの GET のみ扱う）。
 
 const CACHE_PREFIX = 'fin-tool-';
-const CACHE_VERSION = 'v17';
+const CACHE_VERSION = 'v18';
 const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;
 
 // キャッシュ対象（sw.js からの相対パス。"/" から始まる絶対パスは使わない）
@@ -18,9 +18,11 @@ const ASSETS = [
   './js/badges.js',
   './js/help.js',
   './js/changelog.js',
+  './js/workspace.js',
   './js/ui/adjustments.js',
   './js/ui/app.js',
   './js/ui/backup.js',
+  './js/ui/companies.js',
   './js/ui/compare.js',
   './js/ui/core.js',
   './js/ui/diagram.js',
@@ -68,8 +70,11 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // 外部へのリクエストには関与しない
 
-  // 画面遷移はキャッシュした index.html を返す（オフライン起動）
+  // アプリの画面（スコープ直下）への遷移はキャッシュした index.html を返す（オフライン起動）。
+  // feedback/ など同じサイトの別ページは置き換えず、通常どおりネットワークから取得する
   if (req.mode === 'navigate') {
+    const scope = new URL(self.registration.scope).pathname;
+    if (url.pathname !== scope && url.pathname !== `${scope}index.html`) return;
     event.respondWith(
       caches.match('./index.html', { ignoreSearch: true }).then((cached) => cached || fetch(req)),
     );

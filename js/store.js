@@ -589,53 +589,5 @@ export function deleteAllData(storage = defaultStorage()) {
   }
 }
 
-// ---- 元に戻す（クリア・期の削除・復元・サンプル読込の直前の状態） ----
-// 直前の状態を1つだけ退避する。端末内（localStorage）に保存し、再読み込み後も戻せる。
-
+// 元に戻す（直前の状態の退避）で使うキー。読み書きは js/workspace.js
 export const UNDO_KEY = 'finAnalysisTool.undo';
-export const UNDO_ACTIONS = {
-  clear: 'クリア',
-  removePeriod: '期の削除',
-  restore: 'バックアップからの復元',
-  sample: 'サンプルデータの読込',
-};
-
-export function createUndoSnapshot(data, action, selected = 0, now = new Date()) {
-  return { action: action in UNDO_ACTIONS ? action : 'clear', selected, at: now.toISOString(), data };
-}
-
-// 保存できなかったときは false（退避できなくても操作は続ける）
-export function saveUndo(snapshot, storage = defaultStorage()) {
-  try {
-    storage?.setItem(UNDO_KEY, JSON.stringify(snapshot));
-    return Boolean(storage);
-  } catch {
-    return false;
-  }
-}
-
-// 退避した状態を読む。壊れている・形式が違うときは null
-export function loadUndo(storage = defaultStorage()) {
-  try {
-    const text = storage?.getItem(UNDO_KEY);
-    if (!text) return null;
-    const raw = JSON.parse(text);
-    if (!isPlainObject(raw) || !(raw.action in UNDO_ACTIONS)) return null;
-    if (validateData(raw.data).length) return null;
-    const data = normalizeData(migrate(raw.data));
-    if (!data) return null;
-    const at = new Date(raw.at);
-    const selected = Number.isInteger(raw.selected) ? Math.min(Math.max(raw.selected, 0), data.periods.length - 1) : 0;
-    return { action: raw.action, label: UNDO_ACTIONS[raw.action], selected, at: Number.isNaN(at.getTime()) ? null : at, data };
-  } catch {
-    return null;
-  }
-}
-
-export function clearUndo(storage = defaultStorage()) {
-  try {
-    storage?.removeItem(UNDO_KEY);
-  } catch {
-    // 消せなくても次の退避で上書きされる
-  }
-}
