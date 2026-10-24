@@ -491,7 +491,7 @@ input[type="text"]:focus { outline: 2px solid var(--primary); outline-offset: -1
   @page { size: A4 portrait; margin: 12mm; }
   body { background: #fff; }
   /* レポート表示中に印刷したときはレポートだけを出す */
-  body.reporting .app-header, body.reporting .sticky-nav, body.reporting .app-main, .update-bar, .toast, .report-toolbar, .report-help { display: none !important; }
+  body.reporting .app-header, body.reporting .sticky-nav, body.reporting .app-main, .update-bar, .toast, .report-toolbar, .report-help, .modal, .error-bar, .storage-bar { display: none !important; }
   .report-view { padding: 0; }
   .report { border: none; border-radius: 0; padding: 0; max-width: none; font-size: 9.5pt; overflow: visible; }
   .report h2 { break-after: avoid; }
@@ -851,3 +851,92 @@ input[type="text"][aria-invalid="true"] { border-color: var(--danger); }
 .report-badge.badge-caution { color: #9a4a00; background: none; }
 .bound-edit { margin-top: 4px; }
 .bound-edit > summary { cursor: pointer; font-size: 13px; color: var(--primary); }
+
+/* ---- 段階A：ヘルプ・ガイド・エラー表示 ---- */
+.help-btn {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: 0 2px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 20px;
+  cursor: pointer;
+  align-self: center;
+}
+.row-head .help-btn { margin-left: 4px; vertical-align: middle; width: 20px; height: 20px; line-height: 18px; font-size: 11px; }
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  background: rgba(0, 0, 0, .45);
+}
+.modal[hidden] { display: none; }
+.modal-card {
+  width: 100%;
+  max-width: 520px;
+  max-height: calc(100dvh - 32px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .3);
+}
+@media (min-width: 600px) { .modal { align-items: center; } }
+.modal-title { font-size: 17px; margin: 0 0 8px; }
+.modal-body { overflow-y: auto; font-size: 14px; line-height: 1.7; }
+.modal-body p { margin: 0 0 8px; }
+.modal-actions { margin-top: 12px; justify-content: flex-end; }
+.onb-step { color: var(--muted); font-size: 12px; }
+.help-list dt { font-weight: 600; margin-top: 6px; }
+.help-list dd { margin: 0 0 4px; }
+.glossary-item { border-bottom: 1px solid var(--border); padding: 6px 0; }
+.glossary-item > summary { cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+.glossary-name { font-weight: 600; }
+.glossary-formula { font-size: 12px; color: var(--muted); }
+.legal-list { margin: 4px 0 8px; padding-left: 1.2em; font-size: 13px; line-height: 1.7; }
+.error-bar, .storage-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 60;
+  padding: 10px 16px;
+  padding-top: max(10px, env(safe-area-inset-top));
+  background: var(--error-bg);
+  color: var(--text);
+  border-bottom: 2px solid var(--danger);
+  font-size: 14px;
+}
+.error-bar[hidden], .storage-bar[hidden] { display: none; }
+.error-bar p { margin: 0 0 6px; }
+.error-bar-title { font-weight: 700; color: var(--danger); }
+.error-bar-detail { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.storage-bar { display: flex; align-items: center; gap: 8px; z-index: 55; }
+.storage-bar span { flex: 1; min-width: 0; }
+.storage-bar .btn { flex: none; width: auto; }
+.toast { display: flex; align-items: center; gap: 12px; }
+.toast.has-action { pointer-events: auto; }
+.toast-action {
+  flex: none;
+  border: 0;
+  background: none;
+  color: #8cc4ff;
+  font: inherit;
+  font-weight: 700;
+  padding: 4px 2px;
+  cursor: pointer;
+}

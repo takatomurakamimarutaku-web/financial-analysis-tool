@@ -14,7 +14,12 @@ import {
   needsBackupReminder, hasAnyData,
   createAdjustment, addAdjustment, removeAdjustment,
   createLineItem, addLineItem, removeLineItem, deleteAllData,
+  createUndoSnapshot, saveUndo, loadUndo, clearUndo,
 } from './store.js';
+import {
+  DISCLAIMER, PRIVACY, REPORT_DISCLAIMER, COPYRIGHT, LICENSE_TEXT, CONTACT, ONBOARDING_STEPS, ONBOARDING_KEY, NA_RULES,
+  indicatorHelp, hasHelp, helpCatalog,
+} from './help.js';
 import { buildLineChartSvg } from './chart.js';
 import {
   plSteps, ebitdaSteps, netDebtSteps, buildWaterfallSvg, bsBoxes, buildBsBoxSvg, cccParts, buildCccSvg,
@@ -138,6 +143,120 @@ function criterionBar() {
     setView('settings');
   });
   return b;
+}
+
+// ---- ダイアログ（ヘルプ・初回ガイド） ----
+
+let modalOnClose = null;
+let modalReturnFocus = null;
+
+// actions = [{ label, primary, onClick }]。onClick が false を返したときは閉じない
+function openModal({ title, body, actions = [{ label: '閉じる', primary: true }], onClose = null }) {
+  if ($('modal').hidden) modalReturnFocus = document.activeElement;
+  modalOnClose = onClose;
+  $('modalTitle').textContent = title;
+  $('modalBody').replaceChildren(...body);
+  $('modalActions').replaceChildren(...actions.map((a) => {
+    const b = el('button', { type: 'button', className: `btn${a.primary ? ' btn-primary' : ''}`, text: a.label });
+    b.addEventListener('click', () => {
+      if (a.onClick && a.onClick() === false) return;
+      closeModal();
+    });
+    return b;
+  }));
+  $('modal').hidden = false;
+  $('modalBody').scrollTop = 0;
+  ($('modalActions').querySelector('.btn-primary') ?? $('modalActions').firstChild)?.focus();
+}
+
+function closeModal() {
+  if ($('modal').hidden) return;
+  $('modal').hidden = true;
+  const fn = modalOnClose;
+  modalOnClose = null;
+  if (fn) fn();
+  if (modalReturnFocus && document.contains(modalReturnFocus)) modalReturnFocus.focus();
+}
+
+function helpButton(id, name) {
+  const b = el('button', { type: 'button', className: 'help-btn', 'aria-label': `${name}の説明`, text: '?' });
+  b.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openHelp(id);
+  });
+  return b;
+}
+
+function helpBody(h) {
+  const dl = el('dl', { className: 'help-list' }, [
+    el('dt', { text: '計算式' }), el('dd', { text: h.formula }),
+    el('dt', { text: '意味・見方' }), el('dd', { text: h.meaning }),
+  ]);
+  if (h.guide) {
+    dl.append(el('dt', { text: '評価の目安' }), el('dd', {}, [
+      el('span', { text: `${h.guide.text}（${h.guide.source}）` }),
+      ...h.guide.notes.map((n) => el('span', { className: 'guide-note', text: n })),
+    ]));
+  }
+  return dl;
+}
+
+function openHelp(id) {
+  const h = indicatorHelp(id, { days: days(), evaluation: evaluation() });
+  if (!h) return;
+  openModal({
+    title: h.name,
+    body: [helpBody(h)],
+    actions: [
+      { label: '指標の解説一覧', onClick: () => { state.settingsPage = 'glossary'; setView('settings'); } },
+      { label: '閉じる', primary: true },
+    ],
+  });
+}
+
+function readOnboarded() {
+  try {
+    return localStorage.getItem(ONBOARDING_KEY) !== null;
+  } catch {
+    return true; // 保存できない環境では毎回出さない
+  }
+}
+
+function markOnboarded() {
+  try {
+    localStorage.setItem(ONBOARDING_KEY, new Date().toISOString());
+  } catch {
+    // 保存できなくても使える
+  }
+}
+
+function isStandalone() {
+  try {
+    return window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+  } catch {
+    return false;
+  }
+}
+
+function openOnboarding(step = 0) {
+  const s = ONBOARDING_STEPS[step];
+  const last = step === ONBOARDING_STEPS.length - 1;
+  const body = [
+    el('p', { className: 'onb-step', text: `${step + 1} / ${ONBOARDING_STEPS.length}` }),
+    ...s.lines.map((t) => el('p', { text: t })),
+  ];
+  if (s.id === 'protect' && isStandalone()) body.push(el('p', { className: 'note', text: 'いまはホーム画面から起動しています（追加済みです）。' }));
+  const actions = [];
+  if (step > 0) actions.push({ label: '戻る', onClick: () => { openOnboarding(step - 1); return false; } });
+  else actions.push({ label: 'スキップ' });
+  if (s.action === 'sample') {
+    actions.push({ label: 'サンプルで試す', onClick: () => { closeModal(); onLoadSample(); setView('compare'); return false; } });
+  }
+  actions.push(last
+    ? { label: 'はじめる', primary: true }
+    : { label: '次へ', primary: true, onClick: () => { openOnboarding(step + 1); return false; } });
+  openModal({ title: s.title, body, actions, onClose: markOnboarded });
 }
 
 // ---- サマリー（入力タブ先頭） ----
@@ -391,10 +510,13 @@ function onAddPeriod() {
 function onRemovePeriod() {
   const p = currentPeriod();
   if (!window.confirm(`「${periodName(p, state.selected)}」を削除します。よろしいですか？`)) return;
+  const undoable = keepUndo('removePeriod');
   state.data = removePeriod(state.data, state.selected);
   state.selected = Math.min(state.selected, state.data.periods.length - 1);
   renderForm();
   update();
+  saveNow();
+  showUndoToast(`「${periodName(p, state.selected)}」を削除しました`, undoable);
 }
 
 function onMovePeriod(delta) {
@@ -420,6 +542,10 @@ function renderGlobalWarnings() {
   if (state.storageError) {
     box.append(el('div', { className: 'warning error', text: state.storageError }));
   }
+  // 保存できない間は画面上部に常に表示する（スクロールしても消えない）
+  $('storageBar').hidden = !state.storageError;
+  $('storageBarText').textContent = state.storageError
+    ? `${state.storageError}。いまの内容はこの画面を閉じると失われます。` : '';
 }
 
 function valueClass(base, r) {
@@ -446,6 +572,7 @@ function renderInputResults() {
       const details = el('details', { className: 'indicator' }, [
         el('summary', {}, [
           el('span', { className: 'indicator-name', text: ind.name }),
+          helpButton(ind.id, ind.name),
           ...(badge ? [badgeEl(badge)] : []),
           el('span', { className: valueClass('indicator-value', r), text: fv(r, ind.unit) }),
         ]),
@@ -943,7 +1070,7 @@ function renderReport() {
     '調整後ネットデット ＝ 有利子負債 ＋ デットライク項目 − 現預金 − キャッシュライク項目。',
     '参考：平均運転資本は、本来は月次残高で算定すべきものであり、本値は期末残高による簡易的な目安です。',
     ...(reportNote(evaluation()) ? [reportNote(evaluation())] : []),
-    '本レポートは入力データに基づく簡易的な分析であり、監査・保証や財務デューデリジェンスの結論ではありません。',
+    REPORT_DISCLAIMER,
   ];
   box.append(el('section', { className: 'notes' }, [
     el('h2', { text: '警告・注記' }),
@@ -1003,7 +1130,8 @@ function renderCompare() {
         el('th', { colspan: String(cmp.labels.length + 1), scope: 'colgroup' }, [el('span', { text: groupName(group) })]),
       ]));
     }
-    const head = el('th', { className: 'row-head', scope: 'row', text: rowLabel(settings(), row) });
+    const head = el('th', { className: 'row-head', scope: 'row' }, [el('span', { text: rowLabel(settings(), row) })]);
+    if (hasHelp(row.id)) head.append(helpButton(row.id, row.name));
     if (state.basis === 'average' && row.averageable) head.append(el('span', { className: 'avg-mark', text: '★' }));
     const tr = el('tr', {}, [head]);
     row.cells.forEach((cell, ci) => {
@@ -1228,12 +1356,13 @@ const SETTINGS_PAGES = [
   { id: 'bs', title: 'BS科目', summary: () => accountSummary('bs') },
   { id: 'indicators', title: '指標の表示・並び順', summary: () => `${INDICATORS.length}件中${indicatorList(settings()).length}件を表示` },
   { id: 'evaluation', title: '評価基準（バッジ）', summary: () => (evaluation().enabled ? criterionLabel(evaluation()) : 'バッジを表示しない') },
+  { id: 'glossary', title: '指標の解説（計算式一覧）', summary: () => '計算式・意味・評価の目安' },
   { id: 'analysis', title: '分析の基本設定', summary: () => `1年＝${days()}日・比較の初期値：${settings().analysis.defaultBasis === 'average' ? '平均残高' : '期末残高'}` },
   { id: 'display', title: '画面の表示', summary: () => `テーマ：${THEMES.find((t) => t.id === settings().theme).name}・マイナス：${settings().negativeStyle === 'triangle' ? '△' : '−'}` },
   { id: 'digits', title: '表示桁数', summary: () => `%：${settings().digits.pct}桁・日：${settings().digits.days}桁・倍/回：${settings().digits.times}桁` },
   { id: 'categories', title: '正常化EBITDAの調整区分', summary: () => `${Object.keys(settings().adjustmentCategoryNames).length}件を名称変更` },
   { id: 'data', title: 'バックアップ・データ管理', summary: () => (settings().backupReminderDays ? `${settings().backupReminderDays}日ごとに案内` : 'バックアップの案内なし') },
-  { id: 'about', title: 'アプリ情報', summary: () => `バージョン ${APP_VERSION}` },
+  { id: 'about', title: 'このアプリについて', summary: () => `バージョン ${APP_VERSION}` },
 ];
 
 function accountSummary(section) {
@@ -1505,6 +1634,7 @@ function renderDataPage(panel) {
       btn('バックアップを保存', '', async () => { await onExport(); renderSettings(); }),
       btn('バックアップから復元', '', onImportClick),
     ]),
+    ...undoSection(),
     el('h3', { className: 'sub-title', text: '初期化' }),
     el('div', { className: 'actions' }, [
       btn('設定を初期値に戻す', '', onResetSettings),
@@ -1512,6 +1642,22 @@ function renderDataPage(panel) {
     ]),
     el('p', { className: 'note', text: '「設定を初期値に戻す」は入力した金額を残します（内訳科目は削除し、親科目は内訳の合計のまま入力欄に戻ります）。' }),
   );
+}
+
+function undoSection() {
+  const u = loadUndo();
+  if (!u) return [];
+  const b = el('button', { type: 'button', className: 'btn', text: `「${u.label}」の前の状態に戻す` });
+  b.addEventListener('click', () => {
+    if (!window.confirm(`「${u.label}」の前の状態${u.at ? `（${formatDateTime(u.at)}）` : ''}に戻します。いまの入力内容は置き換わります。よろしいですか？`)) return;
+    onUndo();
+    renderSettings();
+  });
+  return [
+    el('h3', { className: 'sub-title', text: '元に戻す' }),
+    el('p', { className: 'note', text: '直前の「クリア」「期の削除」「バックアップからの復元」「サンプルデータの読込」の前の状態を1つだけ、この端末内に退避しています。' }),
+    el('div', { className: 'actions' }, [b]),
+  ];
 }
 
 function onResetSettings() {
@@ -1527,6 +1673,8 @@ function renderAboutPage(panel) {
   const persisted = el('dd', { text: '確認中…' });
   isStoragePersisted().then((v) => { persisted.textContent = v === true ? '保護あり（自動削除されにくい）' : v === false ? '保護なし（空き容量不足などで消えることがあります）' : '確認できません'; });
   const check = el('button', { type: 'button', className: 'btn', text: '更新を確認' });
+  const guide = el('button', { type: 'button', className: 'btn', text: '使い方ガイドを見る' });
+  guide.addEventListener('click', () => openOnboarding(0));
   check.addEventListener('click', async () => {
     check.disabled = true;
     const r = await checkForUpdate();
@@ -1541,7 +1689,16 @@ function renderAboutPage(panel) {
       el('dt', { text: '保存先' }), el('dd', { text: 'この端末のブラウザ内（外部には送信しません）' }),
       el('dt', { text: '保存データの保護' }), persisted,
     ]),
-    el('div', { className: 'actions' }, [check]),
+    el('div', { className: 'actions' }, [check, guide]),
+    el('h3', { className: 'sub-title', text: 'ご利用にあたって（免責事項）' }),
+    el('ul', { className: 'legal-list' }, DISCLAIMER.map((t) => el('li', { text: t }))),
+    el('h3', { className: 'sub-title', text: 'プライバシー' }),
+    el('ul', { className: 'legal-list' }, PRIVACY.map((t) => el('li', { text: t }))),
+    el('h3', { className: 'sub-title', text: '著作権・ライセンス' }),
+    el('p', { className: 'note', text: COPYRIGHT }),
+    el('ul', { className: 'legal-list' }, LICENSE_TEXT.map((t) => el('li', { text: t }))),
+    el('h3', { className: 'sub-title', text: 'お問い合わせ' }),
+    el('p', { className: 'note', text: CONTACT ?? '準備中です。' }),
   );
 }
 
@@ -1670,7 +1827,25 @@ function renderEvaluationPage(panel) {
   }
 }
 
+function renderGlossaryPage(panel) {
+  panel.append(el('p', { className: 'note', text: `計算式は期末残高ベースです（比較タブの「平均残高」では★の指標のBS項目を前期末と当期末の平均で計算します）。回転日数は1年を${days()}日として計算します。評価の目安は現在の評価基準（${criterionLabel(evaluation())}）です。` }));
+  for (const g of helpCatalog({ days: days(), evaluation: evaluation() })) {
+    panel.append(el('h3', { className: 'sub-title', text: g.name }));
+    for (const h of g.items) {
+      panel.append(el('details', { className: 'glossary-item' }, [
+        el('summary', {}, [el('span', { className: 'glossary-name', text: h.name }), el('span', { className: 'glossary-formula', text: h.formula })]),
+        helpBody(h),
+      ]));
+    }
+  }
+  panel.append(
+    el('h3', { className: 'sub-title', text: '計算できない場合の表示' }),
+    el('ul', { className: 'note' }, NA_RULES.map((t) => el('li', { text: t }))),
+  );
+}
+
 const SETTINGS_RENDERERS = {
+  glossary: renderGlossaryPage,
   evaluation: renderEvaluationPage,
   display: renderDisplayPage,
   unit: renderUnitPage,
@@ -1783,6 +1958,7 @@ async function onImportFile(e) {
   }
   const when = result.exportedAt ? `（${formatDateTime(new Date(result.exportedAt))} 作成）` : '';
   if (!window.confirm(`バックアップ${when}で現在のデータを上書きします。よろしいですか？`)) return;
+  const undoable = hasAnyInput() && keepUndo('restore');
   state.data = result.data;
   state.selected = state.data.periods.length - 1;
   state.basis = state.data.settings.analysis.defaultBasis;
@@ -1790,27 +1966,57 @@ async function onImportFile(e) {
   renderForm();
   update();
   saveNow();
-  showToast('バックアップから復元しました');
+  showUndoToast('バックアップから復元しました', undoable);
 }
 
 function onLoadSample() {
   if (hasAnyInput() && !window.confirm('入力中のデータをサンプルデータで上書きします。よろしいですか？')) return;
+  const undoable = hasAnyInput() && keepUndo('sample');
   state.data = normalizeData({ ...getSampleMultiData(), settings: settings() });
   state.selected = state.data.periods.length - 1;
   renderForm();
   update();
   saveNow();
-  showToast('サンプルデータを読み込みました');
+  showUndoToast('サンプルデータを読み込みました', undoable);
 }
 
 function onClear() {
   if (!window.confirm('すべての期の入力内容をクリアします（設定はそのまま）。よろしいですか？')) return;
+  const undoable = keepUndo('clear');
   state.data = createEmptyData(settings());
   state.selected = 0;
   renderForm();
   update();
   saveNow();
-  showToast('クリアしました');
+  showUndoToast('クリアしました', undoable);
+}
+
+// 操作の直前の状態を退避する。退避できたら true
+function keepUndo(action) {
+  saveNow();
+  return saveUndo(createUndoSnapshot(state.data, action, state.selected));
+}
+
+function showUndoToast(msg, undoable) {
+  if (undoable) showToast(msg, { label: '元に戻す', onClick: onUndo }, 8000);
+  else showToast(msg);
+}
+
+function onUndo() {
+  const u = loadUndo();
+  if (!u) {
+    showToast('元に戻せるデータがありません');
+    return;
+  }
+  state.data = u.data;
+  state.selected = u.selected;
+  state.basis = state.data.settings.analysis.defaultBasis;
+  clearUndo();
+  if (state.view === 'settings') renderSettings();
+  renderForm();
+  update();
+  saveNow();
+  showToast(`「${u.label}」の前の状態に戻しました`);
 }
 
 async function copyText(text) {
@@ -1845,15 +2051,27 @@ async function onCopy() {
 }
 
 let toastTimer = null;
-function showToast(msg) {
+// action = { label, onClick }（「元に戻す」など）。ボタンがあるときは長めに表示する
+function showToast(msg, action = null, duration = 2000) {
   const t = $('toast');
-  t.textContent = msg;
+  $('toastText').textContent = msg;
+  t.querySelector('.toast-action')?.remove();
+  if (action) {
+    const b = el('button', { type: 'button', className: 'toast-action', text: action.label });
+    b.addEventListener('click', () => {
+      t.classList.remove('show', 'has-action');
+      action.onClick();
+    });
+    t.append(b);
+  }
+  t.classList.toggle('has-action', Boolean(action));
   t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
+  toastTimer = setTimeout(() => t.classList.remove('show', 'has-action'), duration);
 }
 
 function init() {
+  window.__fatalBackup = () => { onExport().catch(() => window.__saveRawBackup?.()); };
   const { data, error } = loadData();
   state.data = data;
   state.storageError = error;
@@ -1909,6 +2127,9 @@ function init() {
   $('btnPrint').addEventListener('click', () => window.print());
   $('btnImport').addEventListener('click', onImportClick);
   $('importFile').addEventListener('change', onImportFile);
+  $('btnStorageBackup').addEventListener('click', onExport);
+  $('modal').addEventListener('click', (e) => { if (e.target === $('modal')) closeModal(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 
   registerServiceWorker((apply) => {
     $('updateBar').hidden = false;
@@ -1925,6 +2146,9 @@ function init() {
 
   // 閉じる直前に未保存分を書き込む
   window.addEventListener('pagehide', () => { if (saveTimer) saveNow(); });
+
+  // 初めて使う人（データなし・ガイド未表示）には使い方ガイドを出す
+  if (!readOnboarded() && !hasAnyData(state.data)) openOnboarding(0);
 }
 
 init();

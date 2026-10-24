@@ -22,8 +22,60 @@
       if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
     } catch (e) { /* 保存領域が使えない環境では端末の設定に従う */ }
   </script>
+  <script>
+    // 想定外のエラーの案内。js/ui.js が読み込めない場合でも動くよう、ここに単独で置く。
+    // 「バックアップを保存」は保存済みのデータをそのままバックアップ形式のファイルにする（外部には送信しない）。
+    (function () {
+      function show(detail) {
+        var bar = document.getElementById('errorBar');
+        if (!bar || !bar.hidden) return;
+        var d = document.getElementById('errorDetail');
+        if (d) d.textContent = detail ? String(detail).slice(0, 200) : '';
+        bar.hidden = false;
+      }
+      window.__showFatalError = show;
+      window.addEventListener('error', function (e) {
+        if (e.filename && e.filename.indexOf(location.origin) !== 0) return; // 拡張機能などアプリ外のエラーは無視
+        if (/ResizeObserver/.test(e.message || '')) return;
+        show(e.message);
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        show(e.reason && e.reason.message ? e.reason.message : e.reason);
+      });
+      window.__saveRawBackup = function () {
+        try {
+          var text = localStorage.getItem('finAnalysisTool.data');
+          if (!text) { alert('保存されているデータがありません'); return; }
+          var now = new Date();
+          var json = JSON.stringify({ format: 'finAnalysisTool-backup', formatVersion: 1, exportedAt: now.toISOString(), data: JSON.parse(text) }, null, 2);
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+          a.download = 'fin-tool-backup-' + now.toISOString().slice(0, 10) + '.json';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        } catch (err) {
+          alert('バックアップを作成できませんでした');
+        }
+      };
+    })();
+  </script>
 </head>
 <body>
+  <div id="errorBar" class="error-bar" role="alert" hidden>
+    <p class="error-bar-title">予期しないエラーが発生しました</p>
+    <p class="error-bar-text">入力したデータは端末内に残っています。念のためバックアップを保存してから、再読み込みしてください。</p>
+    <p id="errorDetail" class="error-bar-detail"></p>
+    <div class="actions">
+      <button type="button" class="btn" onclick="(window.__fatalBackup || window.__saveRawBackup)()">バックアップを保存</button>
+      <button type="button" class="btn btn-primary" onclick="location.reload()">再読み込み</button>
+      <button type="button" class="btn" onclick="document.getElementById('errorBar').hidden = true">閉じる</button>
+    </div>
+  </div>
+  <div id="storageBar" class="storage-bar" role="alert" hidden>
+    <span id="storageBarText"></span>
+    <button type="button" id="btnStorageBackup" class="btn btn-small">バックアップを保存</button>
+  </div>
   <header class="app-header">
     <h1 class="app-title"><img src="icons/icon.svg" alt="" class="app-logo" width="28" height="28"><span>数字のミカタ</span><span class="app-sub">財務分析ツール</span></h1>
     <p class="app-note">金額単位：<span class="unit-name" data-scope="all">千円</span> ／ データはこの端末のブラウザ内にのみ保存されます</p>
@@ -275,7 +327,15 @@
     <button type="button" id="btnUpdate" class="btn btn-primary">更新</button>
   </div>
 
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="modal" class="modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <h2 id="modalTitle" class="modal-title"></h2>
+      <div id="modalBody" class="modal-body"></div>
+      <div id="modalActions" class="actions modal-actions"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"><span id="toastText"></span></div>
 
   <script type="module" src="js/ui.js"></script>
 </body>
