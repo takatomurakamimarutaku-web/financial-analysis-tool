@@ -345,7 +345,7 @@ describe('データ移行 version 3 → 4', () => {
   test('v3 のバックアップを復元できる', () => {
     const r = parseBackup(JSON.stringify({ format: 'finAnalysisTool-backup', formatVersion: 1, exportedAt: null, data: v3() }));
     assert.equal(r.ok, true);
-    assert.equal(r.data.version, 7);
+    assert.equal(r.data.version, 8);
     assert.deepEqual(r.data.settings, S());
   });
   test('v4 バックアップの往復で設定・内訳も復元される', () => {
@@ -442,7 +442,7 @@ describe('データ移行 version 4 → 5', () => {
     const src = v4('million');
     const r = parseBackup(JSON.stringify({ format: 'finAnalysisTool-backup', formatVersion: 1, exportedAt: null, data: src }));
     assert.equal(r.ok, true);
-    assert.equal(r.data.version, 7);
+    assert.equal(r.data.version, 8);
     assert.equal(r.data.settings.units.report, 'million');
     assert.deepEqual(r.data.periods, getSampleData().periods);
   });

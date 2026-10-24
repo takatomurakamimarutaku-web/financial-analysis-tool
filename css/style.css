@@ -1005,3 +1005,61 @@ body.reporting .company-bar { display: none; }
 .csv-preview-value { text-align: right; font-variant-numeric: tabular-nums; }
 .csv-preview-before { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }
 .csv-preview-before:empty { display: none; }
+
+/* ---- 印刷用レポートの仕上げ（表紙・所見・グラフ・ページ番号） ---- */
+.report-options { max-width: 210mm; margin: 0 auto 12px; }
+.report-options-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
+.report-options-box summary { font-weight: 600; cursor: pointer; }
+.report-options-grid { display: grid; gap: 8px; margin-top: 8px; }
+@media (min-width: 600px) { .report-options-grid { grid-template-columns: 1fr 1fr; } }
+.report-options-box textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 16px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  resize: vertical;
+}
+.report-options-box .field { margin-top: 8px; }
+.report-options-checks { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 8px 0 4px; }
+.report-options-checks .check { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; }
+.report-options-box .note { margin: 4px 0 0; }
+/* レポートの中は端末のテーマにかかわらず白地の配色（グラフも同じ） */
+.report {
+  --surface: #ffffff;
+  --text: #1a2332;
+  --muted: #5b6676;
+  --border: #d5dbe3;
+  --primary: #12509b;
+  --accent: #0f766e;
+  --danger: #b42318;
+}
+.report-cover { text-align: center; padding: 24px 8px 20px; margin-bottom: 12px; border-bottom: 2px solid #12509b; }
+.report-cover h1 { font-size: 22px; margin: 4px 0 12px; }
+.report-cover-app { color: #555; margin: 0; }
+.report-cover-company { font-size: 18px; font-weight: 700; margin: 0 0 16px; }
+.report-cover-meta { display: grid; grid-template-columns: auto auto; justify-content: center; gap: 2px 12px; margin: 0 auto 16px; text-align: left; }
+.report-cover-meta dt { color: #555; }
+.report-cover-meta dd { margin: 0; }
+.report-cover-note { font-size: 10px; color: #555; text-align: left; max-width: 150mm; margin: 0 auto; }
+.report-comment p { white-space: pre-wrap; margin: 4px 0; }
+.report-charts { display: grid; gap: 10px; grid-template-columns: 1fr; }
+@media (min-width: 560px) { .report-charts { grid-template-columns: 1fr 1fr; } }
+.report-chart { break-inside: avoid; border: 1px solid #e3e7ed; border-radius: 6px; padding: 6px; }
+.report-chart h3 { font-size: 11px; margin: 0 0 2px; }
+.report-chart svg { width: 100%; height: auto; display: block; }
+@page numbered {
+  @bottom-center { content: counter(page) " / " counter(pages); font-size: 9pt; color: #666; }
+}
+@media print {
+  .report-options { display: none !important; }
+  .report.page-numbers { page: numbered; }
+  .report-cover { min-height: 240mm; display: flex; flex-direction: column; justify-content: center; border-bottom: none; break-after: page; }
+  .report-cover h1 { font-size: 26pt; }
+  .report-cover-company { font-size: 18pt; }
+  .report-charts { grid-template-columns: 1fr 1fr; }
+}

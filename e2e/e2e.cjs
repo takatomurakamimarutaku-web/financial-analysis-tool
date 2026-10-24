@@ -143,6 +143,33 @@ async function shot(page, name) {
     });
 
     if (scheme === 'light') {
+      await step('レポート：作成者・所見・表紙・グラフ・ページ番号の設定が反映・保存される', async () => {
+        await page.click('#tab-compare');
+        await page.click('#btnReport');
+        await page.fill('#reportAuthor', '山田 太郎');
+        await page.fill('#reportOffice', '○○会計事務所');
+        await page.fill('#reportComment', '売上高は増加傾向。');
+        await page.waitForTimeout(700);
+        assert.match(await page.textContent('#report .report-cover'), /○○会計事務所.*山田 太郎/);
+        assert.match(await page.textContent('#report .report-comment'), /売上高は増加傾向/);
+        assert.equal(await page.locator('#report .report-chart svg').count(), 7);
+        assert.equal(await page.evaluate(() => document.getElementById('report').classList.contains('page-numbers')), true);
+        await shot(page, 'report-options');
+        await page.uncheck('#reportCover');
+        await page.uncheck('#reportCharts');
+        assert.equal(await page.locator('#report .report-cover').count(), 0);
+        assert.equal(await page.locator('#report .report-chart').count(), 0);
+        assert.match(await page.textContent('#report .report-meta'), /作成：○○会計事務所/);
+        await page.waitForTimeout(700);
+        const ws = JSON.parse(await page.evaluate(() => localStorage.getItem('finAnalysisTool.data')));
+        assert.deepEqual(ws.settings.report, { author: '山田 太郎', office: '○○会計事務所', cover: false, charts: false, pageNumbers: true });
+        assert.equal(ws.companies.find((c) => c.id === ws.activeId).reportComment, '売上高は増加傾向。');
+        await page.check('#reportCover');
+        await page.check('#reportCharts');
+        await page.waitForTimeout(700);
+        await page.click('#btnReportBack');
+      });
+
       let backupPath;
       await step('バックアップを保存し、クリア→元に戻す→復元できる', async () => {
         await page.click('#tab-input');
@@ -165,7 +192,7 @@ async function shot(page, name) {
         await page.click('#modalActions >> text=に上書き');
         await page.waitForTimeout(300);
         const ws = JSON.parse(await page.evaluate(() => localStorage.getItem('finAnalysisTool.data')));
-        assert.equal(ws.version, 9);
+        assert.equal(ws.version, 10);
         assert.equal(ws.companies.length, 1);
         assert.equal(ws.companies[0].periods.length, 3, '復元で3期に戻る');
       });

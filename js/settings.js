@@ -82,6 +82,27 @@ export function createDefaultSettings() {
     theme: 'auto',
     negativeStyle: 'minus',
     evaluation: createDefaultEvaluation(),
+    report: createDefaultReportSettings(),
+  };
+}
+
+// 印刷用レポートの設定（全社共通）：作成者・事務所名、表紙・グラフ・ページ番号を載せるか
+export const REPORT_TEXT_MAX = 100;
+export function createDefaultReportSettings() {
+  return { author: '', office: '', cover: true, charts: true, pageNumbers: true };
+}
+
+export function normalizeReportSettings(raw) {
+  const d = createDefaultReportSettings();
+  if (!isPlainObject(raw)) return d;
+  const text = (v) => (typeof v === 'string' ? v.slice(0, REPORT_TEXT_MAX) : '');
+  const flag = (v, def) => (typeof v === 'boolean' ? v : def);
+  return {
+    author: text(raw.author),
+    office: text(raw.office),
+    cover: flag(raw.cover, d.cover),
+    charts: flag(raw.charts, d.charts),
+    pageNumbers: flag(raw.pageNumbers, d.pageNumbers),
   };
 }
 
@@ -162,6 +183,7 @@ export function normalizeSettings(raw) {
     theme: THEMES.some((t) => t.id === raw.theme) ? raw.theme : d.theme,
     negativeStyle: NEGATIVE_STYLES.some((t) => t.id === raw.negativeStyle) ? raw.negativeStyle : d.negativeStyle,
     evaluation: normalizeEvaluation(raw.evaluation),
+    report: normalizeReportSettings(raw.report),
   };
 }
 

@@ -75,7 +75,7 @@ describe('データ移行 version 8 → 9（CSV取込の対応表）', () => {
   test('v8 の全社バックアップも読める', () => {
     const r = parseAnyBackup(backupToJson(migrateV7toV8(getSampleMultiData())));
     assert.equal(r.kind, 'workspace');
-    assert.equal(r.workspace.version, 9);
+    assert.equal(r.workspace.version, WORKSPACE_VERSION);
   });
 });
 

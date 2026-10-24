@@ -1,18 +1,20 @@
 // 出力（CSV・印刷用レポート）・データ削除
 import { badgeFor, reportNote } from '../badges.js';
 import {
-  buildComparison, buildEbitdaBridge, buildNetDebtBreakdown, calcWorkingCapitalSeries, getAdjustmentWarnings, getNetDebtItemWarnings, getWarnings, isNum,
+  CHART_ROWS, buildComparison, buildEbitdaBridge, buildNetDebtBreakdown, calcWorkingCapitalSeries, getAdjustmentWarnings, getNetDebtItemWarnings, getWarnings, isNum,
 } from '../calc.js';
 import { CSV_KINDS, csvFileName } from '../csv.js';
 import { REPORT_DISCLAIMER } from '../help.js';
-import { categoryLabel, rowLabel } from '../settings.js';
-import { createEmptyData, deleteAllData } from '../store.js';
+import { buildLineChartSvg } from '../chart.js';
+import { bsBoxes, buildBsBoxSvg, buildWaterfallSvg, plSteps } from '../diagrams.js';
+import { REPORT_TEXT_MAX, categoryLabel, normalizeReportSettings, rowLabel, unitOf } from '../settings.js';
+import { REPORT_COMMENT_MAX, createEmptyData, deleteAllData } from '../store.js';
 import { formatSigned, renderAdjustmentSummary } from './adjustments.js';
 import { downloadFile, renderBackupStatus } from './backup.js';
 import { createWorkspace } from '../workspace.js';
 import { renderCompanyBar } from './companies.js';
 import {
-  $, cancelPendingSave, days, el, evaluation, fa, fmt, formatDateTime, fv, saveNow, setWorkspace, settings, showToast, state, unitName,
+  $, cancelPendingSave, days, el, evaluation, fa, fmt, formatDateTime, fv, saveNow, scheduleSave, setWorkspace, settings, showToast, state, unitName,
 } from './core.js';
 import { periodName, renderForm, renderInputResults, renderInputWarnings } from './input.js';
 import { pctText, renderNetDebtSummary } from './netdebt.js';
@@ -66,17 +68,134 @@ export function reportTable(labels, rows) {
   return el('table', {}, [el('thead', {}, [head]), tbody]);
 }
 
+export function reportSettings() {
+  return normalizeReportSettings(settings().report);
+}
+
+// レポートの内容（作成者・事務所名・所見コメント・表紙などの有無）。印刷には出さない
+export function renderReportOptions() {
+  const rs = reportSettings();
+  const setReport = (changes) => {
+    state.data.settings = { ...state.data.settings, report: { ...reportSettings(), ...changes } };
+    scheduleSave();
+    renderReport();
+  };
+  const textField = (id, label, value, key, placeholder) => {
+    const input = el('input', { id, type: 'text', autocomplete: 'off', maxlength: String(REPORT_TEXT_MAX), placeholder });
+    input.value = value;
+    input.addEventListener('input', () => setReport({ [key]: input.value }));
+    return el('label', { className: 'field' }, [el('span', { className: 'field-label', text: label }), input]);
+  };
+  const check = (id, label, key) => {
+    const input = el('input', { id, type: 'checkbox' });
+    input.checked = rs[key];
+    input.addEventListener('change', () => setReport({ [key]: input.checked }));
+    return el('label', { className: 'check' }, [input, el('span', { text: label })]);
+  };
+  const comment = el('textarea', { id: 'reportComment', rows: '4', maxlength: String(REPORT_COMMENT_MAX), placeholder: '例：売上高は3期連続で増加。営業利益率も改善しているが、運転資本の増加で手元資金は減少。' });
+  comment.value = state.data.reportComment ?? '';
+  comment.addEventListener('input', () => {
+    state.data.reportComment = comment.value;
+    scheduleSave();
+    renderReport();
+  });
+  $('reportOptions').replaceChildren(
+    el('details', { className: 'report-options-box', open: '' }, [
+      el('summary', { text: 'レポートの内容' }),
+      el('div', { className: 'report-options-grid' }, [
+        textField('reportAuthor', '作成者', rs.author, 'author', '例：山田 太郎'),
+        textField('reportOffice', '事務所名・会社名', rs.office, 'office', '例：○○会計事務所'),
+      ]),
+      el('label', { className: 'field' }, [el('span', { className: 'field-label', text: '所見コメント（この会社のレポートに載せます）' }), comment]),
+      el('div', { className: 'report-options-checks' }, [
+        check('reportCover', '表紙をつける', 'cover'),
+        check('reportCharts', 'グラフ・図解を載せる', 'charts'),
+        check('reportPageNumbers', 'ページ番号をつける', 'pageNumbers'),
+      ]),
+      el('p', { className: 'note', text: '作成者・事務所名と表紙などの有無は全社共通、所見コメントは会社ごとに保存します。ページ番号は印刷・PDF保存のときに付きます（ブラウザによっては付かないことがあります）。' }),
+    ]),
+  );
+}
+
+function reportTitleBlock(data, labels, now, rs) {
+  const by = [rs.office, rs.author].map((x) => x.trim()).filter(Boolean).join('　');
+  const date = formatDateTime(now).slice(0, 10);
+  if (rs.cover) {
+    return el('section', { className: 'report-cover' }, [
+      el('p', { className: 'report-cover-app', text: '数字のミカタ' }),
+      el('h1', { text: '財務分析レポート' }),
+      el('p', { className: 'report-cover-company', text: data.companyName || '（会社名未入力）' }),
+      el('dl', { className: 'report-cover-meta' }, [
+        el('dt', { text: '対象期' }), el('dd', { text: labels.join('、') }),
+        el('dt', { text: '作成日' }), el('dd', { text: date }),
+        ...(by ? [el('dt', { text: '作成' }), el('dd', { text: by })] : []),
+        el('dt', { text: '金額単位' }), el('dd', { text: unitName('report') }),
+      ]),
+      el('p', { className: 'report-cover-note', text: REPORT_DISCLAIMER }),
+    ]);
+  }
+  return el('div', {}, [
+    el('h1', { text: '財務分析レポート' }),
+    el('p', { className: 'report-app', text: '数字のミカタ' }),
+    el('p', { className: 'report-meta', text: `会社名：${data.companyName || '（未入力）'}　対象期：${labels.join('、')}　作成日：${date}${by ? `　作成：${by}` : ''}　金額単位：${unitName('report')}` }),
+  ]);
+}
+
+// 推移グラフ（比較タブと同じ指標）と、最新期の図解（損益の滝グラフ・BSの面積図）
+function reportCharts(data, labels) {
+  const cmp = buildComparison(data, 'end');
+  const scale = unitOf(settings(), 'report').scale;
+  const tick = (unit) => (unit === '%'
+    ? (v) => `${Number((v * 100).toPrecision(6))}%`
+    : (v) => Number((v * (unit === '千円' ? scale : 1)).toPrecision(10)).toLocaleString('ja-JP', { maximumFractionDigits: 2 }));
+  const charts = CHART_ROWS.map((id) => cmp.rows.find((r) => r.id === id)).filter(Boolean).map((row) => {
+    const svg = buildLineChartSvg({
+      labels: labels.map((l, i) => l || `第${i + 1}期`),
+      values: row.cells.map((c) => (c.result.status === 'ok' ? c.result.value : null)),
+      title: row.name,
+      format: (v) => fv({ value: v, status: 'ok' }, row.unit, 'report'),
+      tickFormat: tick(row.unit),
+    });
+    const holder = el('div', { className: 'report-chart' }, [el('h3', { text: row.unit === '千円' ? `${rowLabel(settings(), row)}（${unitName('report')}）` : rowLabel(settings(), row) })]);
+    // svg は chart.js で全テキストをエスケープ済み
+    holder.insertAdjacentHTML('beforeend', svg);
+    return holder;
+  });
+  const last = data.periods.length - 1;
+  const p = data.periods[last];
+  const amt = (v) => (isNum(v) ? fa(v, 'report') : '—');
+  const label = (k, d) => {
+    const a = [...settings().accounts.pl, ...settings().accounts.bs].find((x) => x.key === k);
+    return (a?.label ?? '').trim() || d;
+  };
+  const diagrams = [
+    buildWaterfallSvg({ steps: plSteps(p.pl, label), format: (v, b) => (b.kind === 'delta' ? formatSigned(v, 'report') : amt(v)), title: '損益の滝グラフ' }),
+    buildBsBoxSvg({ boxes: bsBoxes(p.bs), format: amt, label }),
+  ].map((svg, i) => {
+    const holder = el('div', { className: 'report-chart' }, [el('h3', { text: `${i === 0 ? '損益の滝グラフ' : '貸借対照表の面積図'}（${labels[last] || `第${last + 1}期`}・${unitName('report')}）` })]);
+    // svg は diagrams.js で全テキストをエスケープ済み
+    holder.insertAdjacentHTML('beforeend', svg);
+    return holder;
+  });
+  return el('section', { className: 'report-charts-section' }, [
+    el('h2', { text: 'グラフ・図解' }),
+    el('div', { className: 'report-charts' }, [...charts, ...diagrams]),
+  ]);
+}
+
 export function renderReport() {
   const data = state.data;
   const labels = data.periods.map((p, i) => periodName(p, i));
+  const rs = reportSettings();
   const box = $('report');
   box.replaceChildren();
+  box.classList.toggle('page-numbers', rs.pageNumbers);
   const now = new Date();
-  box.append(
-    el('h1', { text: '財務分析レポート' }),
-    el('p', { className: 'report-app', text: '数字のミカタ' }),
-    el('p', { className: 'report-meta', text: `会社名：${data.companyName || '（未入力）'}　対象期：${labels.join('、')}　作成日：${formatDateTime(now).slice(0, 10)}　金額単位：${unitName('report')}` }),
-  );
+  box.append(reportTitleBlock(data, labels, now, rs));
+
+  // 所見
+  const comment = (data.reportComment ?? '').trim();
+  if (comment) box.append(el('section', { className: 'report-comment' }, [el('h2', { text: '所見' }), el('p', { text: comment })]));
 
   // 主要指標
   const cmp = buildComparison(data, 'end');
@@ -144,6 +263,8 @@ export function renderReport() {
       { name: '売上高に対する比率', cells: [...wc.items.map((x) => x.ratio), wc.averageRatio].map((v) => ({ text: pctText(v) })) },
     ]),
   ]));
+
+  if (rs.charts) box.append(reportCharts(data, labels));
 
   // 警告・注記
   const warnings = [];

@@ -1,5 +1,5 @@
 // 複数社（顧問先・案件）の管理。DOMに依存しない純粋関数（保存の読み書きだけ storage を受け取る）。
-// 保存形式 version 9（ワークスペース）：{ version: 9, activeId, companies: [{ id, companyName, periods }], settings, importMap }
+// 保存形式 version 10（ワークスペース）：{ version: 10, activeId, companies: [{ id, companyName, periods, reportComment }], settings, importMap }
 // importMap = 試算表CSV取込の科目の対応表（正規化した科目名 → 入力項目）。全社共通。
 // 設定（settings）は全社で共通。画面は「選択中の会社のデータ」（version 7 と同じ形：companyName・periods・settings）を扱う。
 import {
@@ -9,9 +9,9 @@ import {
 import { normalizeSettings } from './settings.js';
 import { normalizeImportMap } from './importer.js';
 
-export const WORKSPACE_VERSION = 9;
-// ワークスペース形式として読める version（8 は読込時に 9 へ移行する）
-const WORKSPACE_VERSIONS = [8, 9];
+export const WORKSPACE_VERSION = 10;
+// ワークスペース形式として読める version（8・9 は読込時に 10 へ移行する）
+const WORKSPACE_VERSIONS = [8, 9, 10];
 export const MAX_COMPANIES = 30;
 export const UNNAMED_COMPANY = '（会社名未入力）';
 
@@ -34,7 +34,7 @@ export function newCompanyId(now = Date.now()) {
 }
 
 function companyFrom(data, id = newCompanyId()) {
-  return { id, companyName: data.companyName, periods: data.periods };
+  return { id, companyName: data.companyName, periods: data.periods, reportComment: data.reportComment ?? '' };
 }
 
 export function isWorkspace(raw) {
@@ -55,25 +55,34 @@ export function migrateV8toV9(ws) {
   return { ...ws, version: 9, importMap: {} };
 }
 
+// version 9 → 10：各社にレポートの所見コメント（reportComment）を追加する（既定は空）
+export function migrateV9toV10(ws) {
+  if (!isPlainObject(ws) || ws.version !== 9) return ws;
+  const companies = Array.isArray(ws.companies)
+    ? ws.companies.map((c) => (isPlainObject(c) ? { ...c, reportComment: typeof c.reportComment === 'string' ? c.reportComment : '' } : c))
+    : ws.companies;
+  return { ...ws, version: 10, companies };
+}
+
 export function createWorkspace(settings) {
-  return migrateV8toV9(migrateV7toV8(createEmptyData(settings)));
+  return migrateV9toV10(migrateV8toV9(migrateV7toV8(createEmptyData(settings))));
 }
 
 // 欠けた項目を補い、各社のデータを正規化する。形が壊れていれば null
 export function normalizeWorkspace(input) {
   if (!isWorkspace(input)) return null;
-  const raw = migrateV8toV9(input);
+  const raw = migrateV9toV10(migrateV8toV9(input));
   const settings = normalizeSettings(raw.settings);
   const seen = new Set();
   const companies = [];
   for (const c of raw.companies.slice(0, MAX_COMPANIES)) {
     if (!isPlainObject(c)) return null;
-    const d = normalizeData({ version: CURRENT_VERSION, companyName: c.companyName, periods: c.periods, settings });
+    const d = normalizeData({ version: CURRENT_VERSION, companyName: c.companyName, periods: c.periods, settings, reportComment: c.reportComment });
     if (!d) return null;
     let id = typeof c.id === 'string' && c.id && !seen.has(c.id) ? c.id : newCompanyId();
     while (seen.has(id)) id = newCompanyId();
     seen.add(id);
-    companies.push({ id, companyName: d.companyName, periods: d.periods });
+    companies.push({ id, companyName: d.companyName, periods: d.periods, reportComment: d.reportComment });
   }
   if (!companies.length) return { ...createWorkspace(settings), importMap: normalizeImportMap(raw.importMap) };
   const activeId = companies.some((c) => c.id === raw.activeId) ? raw.activeId : companies[0].id;
@@ -97,7 +106,7 @@ export function validateWorkspace(raw) {
       errors.push(`companies[${i}] が不正です`);
       return;
     }
-    for (const e of validateData({ version: CURRENT_VERSION, companyName: c.companyName, periods: c.periods, settings: raw.settings })) {
+    for (const e of validateData({ version: CURRENT_VERSION, companyName: c.companyName, periods: c.periods, settings: raw.settings, reportComment: c.reportComment })) {
       errors.push(`companies[${i}]：${e}`);
     }
   });
@@ -111,7 +120,7 @@ export function activeCompany(ws) {
 // 選択中の会社のデータ（画面が扱う形）
 export function activeData(ws) {
   const c = activeCompany(ws);
-  return { version: CURRENT_VERSION, companyName: c.companyName, periods: c.periods, settings: ws.settings };
+  return { version: CURRENT_VERSION, companyName: c.companyName, periods: c.periods, settings: ws.settings, reportComment: c.reportComment ?? '' };
 }
 
 // 画面のデータ（選択中の会社）をワークスペースに書き戻す。設定は全社共通として更新する
@@ -119,7 +128,7 @@ export function withActiveData(ws, data) {
   return {
     ...ws,
     settings: data.settings,
-    companies: ws.companies.map((c) => (c.id === ws.activeId ? { ...c, companyName: data.companyName, periods: data.periods } : c)),
+    companies: ws.companies.map((c) => (c.id === ws.activeId ? { ...c, companyName: data.companyName, periods: data.periods, reportComment: data.reportComment ?? '' } : c)),
   };
 }
 
@@ -147,6 +156,7 @@ export function duplicateCompany(ws, id) {
     id: newCompanyId(),
     companyName: `${companyLabel(src)}（コピー）`,
     periods: JSON.parse(JSON.stringify(src.periods)),
+    reportComment: src.reportComment ?? '',
   };
   const companies = [...ws.companies];
   companies.splice(i + 1, 0, copy);
@@ -211,7 +221,7 @@ export function workspaceSize(ws) {
 }
 
 // ---- バックアップ（1社分と全社） ----
-// 1社分：従来と同じ形式（data は version 7 の1社分）。全社：data にワークスペース（version 8）を入れる。
+// 1社分：従来と同じ形式（data は1社分のデータ。version 8）。全社：data にワークスペース（version 10）を入れる。
 
 export function workspaceBackupFileName(now = new Date()) {
   const pad = (n) => String(n).padStart(2, '0');

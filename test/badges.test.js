@@ -219,7 +219,7 @@ describe('データ移行 version 6 → 7', () => {
     assert.equal(src.settings.evaluation, undefined); // 元データは変更しない
   });
   test('migrate・バックアップ復元で v7 になり、TKC の入力値もバックアップに含まれる', () => {
-    assert.equal(normalizeData(migrate(v6())).version, 7);
+    assert.equal(normalizeData(migrate(v6())).version, 8);
     const d = getSampleData();
     d.settings.evaluation = setTkcValue({ ...d.settings.evaluation, criterion: 'tkc' }, 'roa', { good: 8, caution: 3 });
     const r = parseBackup(backupToJson(d));

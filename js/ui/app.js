@@ -17,7 +17,7 @@ import {
 } from './input.js';
 import { renderSectionNav, updateNavHeight } from './nav.js';
 import { LINE_LISTS, onAddLineItem, renderNetDebtSummary } from './netdebt.js';
-import { exportCsv, onDeleteAll, renderReport } from './report.js';
+import { exportCsv, onDeleteAll, renderReport, renderReportOptions } from './report.js';
 import { renderSettings, toggle } from './settings-view.js';
 import { onCsvFile, onCsvImportClick } from './import-view.js';
 
@@ -40,7 +40,10 @@ export function setView(view) {
   if (view === 'compare') renderCompare();
   if (view === 'settings') renderSettings();
   if (view === 'diagram') renderDiagrams();
-  if (reporting) renderReport();
+  if (reporting) {
+    renderReportOptions();
+    renderReport();
+  }
   window.scrollTo(0, 0);
 }
 

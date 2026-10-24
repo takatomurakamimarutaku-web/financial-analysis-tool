@@ -138,7 +138,12 @@
   - ファイル名：`fin-tool-comparison-YYYY-MM-DD.csv` など（英数字のみ）
 - 印刷用レポート（A4縦）：会社名・対象期・作成日・主要指標・EBITDAブリッジ・正常化調整の明細・ネットデット内訳・運転資本・警告・注記
   - iPhone：レポート画面の「印刷・PDF保存」→ 共有ボタン →「"ファイル"に保存」でPDF保存
-- JSON バックアップ・復元（Phase 1.5 で実装済み。データ version 1〜6 を読み込み、最新形式へ移行）
+  - **レポートの仕上げ（段階B No.11）**：レポート画面の「レポートの内容」で設定（印刷には出ない）
+    - 作成者・事務所名（全社共通。表紙と見出しに表示）
+    - 所見コメント（会社ごと。最大2000文字。主要指標の前に「所見」として表示）
+    - 表紙（会社名・対象期・作成日・作成者・免責。印刷時は1ページ目に単独）、グラフ・図解（比較タブの推移グラフ5種と、最新期の損益の滝グラフ・BSの面積図）、ページ番号（印刷時に下部中央に「1 / 5」）。それぞれオン・オフ可（既定はオン）
+    - ページ番号は CSS の `@page` の余白ボックスで付けるため、対応していないブラウザでは付かない（Chromium では確認済み、iPhone の Safari は未確認）
+- JSON バックアップ・復元（Phase 1.5 で実装済み。過去のすべての version を読み込み、最新形式へ移行）
 - 「すべてのデータを削除」：確認ダイアログを経て、入力データと最終バックアップ日時をこの端末から削除
 
 ### Phase 6：設定ページ
@@ -299,33 +304,36 @@
 | e2e/e2e.cjs | 画面操作の E2E テスト（Playwright。開発用） |
 | LICENSE | 著作権・ライセンス（再利用不可） |
 
-### 保存形式（version 9：複数社）
+### 保存形式（version 10：複数社）
 
 localStorage の `finAnalysisTool.data` には、全社分をまとめたワークスペースを保存します（js/workspace.js）。
 
 ```json
 {
-  "version": 9,
+  "version": 10,
   "activeId": "co-…",
-  "companies": [ { "id": "co-…", "companyName": "サンプル株式会社", "periods": [ "…" ] } ],
-  "settings": { "…": "全社共通の設定（下の version 7 の settings と同じ）" },
+  "companies": [ { "id": "co-…", "companyName": "サンプル株式会社", "periods": [ "…" ], "reportComment": "" } ],
+  "settings": { "…": "全社共通の設定（下の1社分のデータの settings と同じ）" },
   "importMap": { "製品売上": "pl.sales", "雑収入": "ignore" }
 }
 ```
 
-- 画面は選択中の会社のデータ（下の version 7 と同じ形）を扱い、保存のときにワークスペースへ書き戻します
+- 画面は選択中の会社のデータ（下の1社分のデータと同じ形）を扱い、保存のときにワークスペースへ書き戻します
 - 会社は最大30社。設定（単位・科目・指標・評価基準など）は全社共通です
 - `importMap` は試算表CSV取込の科目の対応表（正規化した科目名 → 入力項目。`ignore` は取り込まない）。全社共通
 - **version 7 以前のデータは、そのまま1社目として移行**します（`migrateV7toV8`。金額・設定・計算結果は変わりません）
-- バックアップは「この会社のバックアップ」（従来と同じ1社分の形式。`data` が version 7）と「全社のバックアップ」（`data` がワークスペース。ファイル名 `fin-tool-backup-all-YYYY-MM-DD.json`）の2種類。1社分を復元するときは、新しい会社として追加するか、選択中の会社に上書きするかを選びます。全社分は全体を置き換えます
+- バックアップは「この会社のバックアップ」（従来と同じ1社分の形式。`data` が1社分のデータ version 8）と「全社のバックアップ」（`data` がワークスペース。ファイル名 `fin-tool-backup-all-YYYY-MM-DD.json`）の2種類。1社分を復元するときは、新しい会社として追加するか、選択中の会社に上書きするかを選びます。全社分は全体を置き換えます
 - 「元に戻す」の退避（`finAnalysisTool.undo`）は全社分を1つ保存します（会社の削除も戻せます）
 
-### 1社分のデータ形式（version 7）
+### 1社分のデータ形式（version 8）
+
+ワークスペースの version（8〜10）とは別の番号です（ワークスペースは `companies` を持つことで区別）。
 
 ```json
 {
-  "version": 7,
+  "version": 8,
   "companyName": "",
+  "reportComment": "",
   "periods": [
     { "label": "2025/3期", "pl": { "sales": null, "...": null }, "bs": { "cash": null, "...": null },
       "adjustments": [
@@ -353,7 +361,8 @@ localStorage の `finAnalysisTool.data` には、全社分をまとめたワー�
       "enabled": true, "criterion": "standard", "jfcIndustry": "manufacturing", "disabled": [],
       "overrides": { "furutado": { "equityRatio": { "good": 50, "caution": 30 } } },
       "tkc": { "industry": "", "values": { "roa": { "good": 8, "caution": 3 } } }
-    }
+    },
+    "report": { "author": "", "office": "", "cover": true, "charts": true, "pageNumbers": true }
   }
 }
 ```
@@ -370,8 +379,10 @@ localStorage の `finAnalysisTool.data` には、全社分をまとめたワー�
 | 4 → 5 | 金額の単位を全体で1つ（`settings.unit`）から区分ごと（`settings.units`）に変更。旧設定の単位を全区分に引き継ぐ | `migrateV4toV5`（js/store.js） |
 | 5 → 6 | 設定に表示テーマ `theme`（既定 auto）とマイナスの表示 `negativeStyle`（既定 minus）を追加 | `migrateV5toV6`（js/store.js） |
 | 6 → 7 | 設定に評価バッジの基準 `evaluation`（既定：標準・表示オン・TKCは空）を追加 | `migrateV6toV7`（js/store.js） |
-| 7 → 8 | 複数社のワークスペースに変更。既存のデータは1社目になる | `migrateV7toV8`（js/workspace.js） |
-| 8 → 9 | ワークスペースに試算表CSV取込の対応表 `importMap`（既定は空）を追加 | `migrateV8toV9`（js/workspace.js） |
+| 7 → 8（1社分） | 所見コメント `reportComment`（既定は空）と、設定にレポートの作成者・事務所名など `report` を追加 | `migrateDataV7toV8`（js/store.js） |
+| 7 → 8（保存） | 複数社のワークスペースに変更。既存のデータは1社目になる | `migrateV7toV8`（js/workspace.js） |
+| 8 → 9（保存） | ワークスペースに試算表CSV取込の対応表 `importMap`（既定は空）を追加 | `migrateV8toV9`（js/workspace.js） |
+| 9 → 10（保存） | 各社に所見コメント `reportComment`（既定は空）を追加 | `migrateV9toV10`（js/workspace.js） |
 
 保存データ・バックアップファイルとも、読み込み時に自動で最新の version に移行します。
 
@@ -397,7 +408,7 @@ E2E テスト（画面を実際に操作して確認。Playwright と Chromium �
 node e2e/e2e.cjs [スクリーンショットの保存先]
 ```
 
-確認内容：初回ガイドとサンプル、入力と分析結果・バッジ、「?」ヘルプ、各タブの横スクロールなし、レポートの免責事項、バックアップ保存・クリア・元に戻す・復元、期の削除の取り消し、複数社、試算表CSVの取込（合計行の優先・対応表の保存・元に戻す）、保存失敗の警告、想定外エラーの案内。
+確認内容：初回ガイドとサンプル、入力と分析結果・バッジ、「?」ヘルプ、各タブの横スクロールなし、レポートの免責事項、バックアップ保存・クリア・元に戻す・復元、期の削除の取り消し、複数社、試算表CSVの取込（合計行の優先・対応表の保存・元に戻す）、レポートの作成者・所見・表紙・グラフの設定、保存失敗の警告、想定外エラーの案内。
 
 ## 更新時の手順（重要）
 
