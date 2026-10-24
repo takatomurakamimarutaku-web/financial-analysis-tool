@@ -101,8 +101,10 @@ export function runChecks(root) {
 
   // ---- Service Worker ----
   let sw = null;
+  let swSource = null;
   try {
-    sw = parseServiceWorker(read(root, 'sw.js'));
+    swSource = read(root, 'sw.js');
+    sw = parseServiceWorker(swSource);
   } catch (e) {
     check(false, `sw.js を読めない（${e.message}）`);
   }
@@ -110,6 +112,7 @@ export function runChecks(root) {
     const cacheName = `${sw.prefix}${sw.version}`;
     check(sw.prefix && sw.version && /^fin-tool-v\d+$/.test(cacheName), `キャッシュ名にバージョンが付いている（${cacheName}）`);
     check(Array.isArray(sw.assets) && sw.assets.length > 0, 'sw.js に ASSETS（キャッシュ対象）がある');
+    check(/cache:\s*'reload'/.test(swSource ?? ''), 'sw.js のインストール時に HTTP キャッシュを通さず取得する（cache: \'reload\'）');
     const assets = sw.assets ?? [];
     for (const a of assets) {
       check(!isAbsolutePath(a) && !isExternal(a), `キャッシュ対象が相対パス（${a}）`);

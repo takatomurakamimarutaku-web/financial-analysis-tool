@@ -3,7 +3,7 @@
 // 外部へのリクエストは行わない（同一オリジンの GET のみ扱う）。
 
 const CACHE_PREFIX = 'fin-tool-';
-const CACHE_VERSION = 'v12';
+const CACHE_VERSION = 'v13';
 const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;
 
 // キャッシュ対象（sw.js からの相対パス。"/" から始まる絶対パスは使わない）
@@ -28,7 +28,9 @@ const ASSETS = [
 
 self.addEventListener('install', (event) => {
   // 新しいバージョンは待機状態にとどめ、利用者が［更新］を押すまで切り替えない
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
+  // cache: 'reload' でブラウザの HTTP キャッシュを通さずに取得する。
+  // （GitHub Pages はファイルを最大10分キャッシュさせるため、通すと新しい版に古いファイルが入ることがある）
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS.map((url) => new Request(url, { cache: 'reload' })))));
 });
 
 self.addEventListener('activate', (event) => {
