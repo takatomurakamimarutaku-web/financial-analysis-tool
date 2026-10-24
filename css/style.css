@@ -362,3 +362,50 @@ input[type="text"]:focus { outline: 2px solid var(--primary); outline-offset: -1
 .backup-last { font-size: 13px; color: var(--muted); }
 .backup .actions { margin-top: 8px; }
 .backup-reminder { color: var(--warn-text); }
+
+/* ---- Phase 3：正常化EBITDA ---- */
+.panel-title { font-size: 16px; margin: 0 0 4px; }
+.sub-title { font-size: 14px; margin: 16px 0 6px; }
+.adjustments .note { margin: 0 0 8px; }
+.adj-list { display: grid; gap: 10px; margin-bottom: 10px; }
+.adj-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+.adj-item.warn { border-color: var(--warn-border); }
+.adj-amount { display: grid; grid-template-columns: minmax(0, 12em) 40px; gap: 6px; align-items: center; }
+.adj-amount input { text-align: right; }
+.adj-item select, .adj-item textarea {
+  width: 100%;
+  font-size: 16px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  min-width: 0;
+}
+.adj-item textarea { min-height: 4.6em; resize: vertical; }
+.adj-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.badge-warn {
+  font-size: 12px;
+  color: var(--warn-text);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: 10px;
+  padding: 1px 8px;
+}
+.btn-small { min-height: 32px; padding: 4px 10px; font-size: 13px; }
+
+.bridge-table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.bridge-table th, .bridge-table td { padding: 6px 4px; border-bottom: 1px solid var(--border); }
+.bridge-table th { text-align: left; font-weight: 400; }
+.bridge-table td { text-align: right; white-space: nowrap; }
+.bridge-table tr.indent th { padding-left: 1.2em; color: var(--muted); }
+.bridge-table tr.total th, .bridge-table tr.total td { font-weight: 700; border-top: 2px solid var(--text); }
+.bridge-compare tr.indent .row-head { padding-left: 1.4em; color: var(--muted); }
+.bridge-compare tr.total th, .bridge-compare tr.total td { font-weight: 700; }

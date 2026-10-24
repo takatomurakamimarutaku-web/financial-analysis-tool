@@ -53,8 +53,11 @@ export function buildLineChartSvg({ labels, values, format = String, tickFormat 
     parts.push(`<line x1="${pad.left}" x2="${pad.left + w}" y1="${ty}" y2="${ty}" class="chart-grid${t === 0 ? ' chart-zero' : ''}"/>`);
     parts.push(`<text x="${pad.left - 6}" y="${ty}" dy="0.32em" text-anchor="end" class="chart-tick">${escapeXml(tickFormat(t))}</text>`);
   }
+  // 両端の期名は内側に寄せて、グラフ外にはみ出さないようにする
   labels.forEach((l, i) => {
-    parts.push(`<text x="${x(i).toFixed(1)}" y="${height - 8}" text-anchor="middle" class="chart-label">${escapeXml(l)}</text>`);
+    const anchor = n === 1 ? 'middle' : i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle';
+    const lx = n === 1 ? x(i) : i === 0 ? x(i) - 8 : i === n - 1 ? x(i) + 8 : x(i);
+    parts.push(`<text x="${lx.toFixed(1)}" y="${height - 8}" text-anchor="${anchor}" class="chart-label">${escapeXml(l)}</text>`);
   });
 
   // 連続する値ごとに線を引く（null で途切れる）

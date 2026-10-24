@@ -89,6 +89,16 @@
 
         <section id="results" class="results" aria-label="分析結果（期末残高ベース）"></section>
       </div>
+
+      <section class="panel adjustments" aria-label="正常化EBITDA">
+        <h2 class="panel-title">正常化EBITDA（<span id="adjPeriodName"></span>）</h2>
+        <p class="note">EBITDAに加算する調整はプラス、減算する調整はマイナスで入力します。根拠メモは必ず残してください。</p>
+        <div id="adjWarnings" class="warnings"></div>
+        <div id="adjList" class="adj-list"></div>
+        <button type="button" id="btnAddAdj" class="btn">＋ 調整項目を追加</button>
+        <h3 class="sub-title">EBITDAブリッジ</h3>
+        <table id="bridgeSingle" class="bridge-table"></table>
+      </section>
     </div>
 
     <!-- 比較タブ -->
@@ -110,6 +120,13 @@
       <section class="panel" aria-label="比較表">
         <div class="table-scroll" tabindex="0" aria-label="比較表（横にスクロールできます）">
           <table id="compareTable" class="compare-table"></table>
+        </div>
+      </section>
+
+      <section class="panel" aria-label="EBITDAブリッジ">
+        <h2 class="panel-title">EBITDAブリッジ（千円）</h2>
+        <div class="table-scroll" tabindex="0" aria-label="EBITDAブリッジ（横にスクロールできます）">
+          <table id="bridgeTable" class="compare-table bridge-compare"></table>
         </div>
       </section>
 

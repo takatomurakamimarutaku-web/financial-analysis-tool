@@ -72,6 +72,19 @@ iPhone のブラウザで使える財務分析ツールです。HTML / CSS / Jav
 }
 ```
 
+### Phase 3：正常化EBITDA
+
+- 各期に調整項目を複数登録できます（入力タブの「正常化EBITDA」欄）
+  - 項目：区分、内容、金額（プラス＝EBITDAに加算、マイナス＝減算）、根拠メモ
+  - 区分：役員報酬の調整／一過性の損益／関連当事者取引／会計方針の差異／事業の撤退・新設／その他
+- 正常化EBITDA ＝ 報告EBITDA ＋ 調整額合計
+- 正常化EBITDAマージン ＝ 正常化EBITDA ÷ 売上高
+- EBITDAブリッジ表（報告EBITDA → 区分ごとの調整 → 調整額合計 → 正常化EBITDA → マージン）
+  - 入力タブ：選択中の期 ／ 比較タブ：全期（調整項目のある区分のみ行を表示）
+- 比較表に「正常化EBITDA」「正常化EBITDAマージン」の行を追加（前期比も表示）
+- 根拠メモが空の調整項目には「根拠未記載」、金額が空の項目には「金額未入力」を表示（金額未入力の項目は合計に含めません）
+- 報告EBITDA（営業利益・減価償却費）が未入力の期は、正常化EBITDAも「—」
+
 ## 計算式一覧（期末残高ベース）
 
 | カテゴリ | 指標 | 計算式 | 表示 |
@@ -135,18 +148,31 @@ iPhone のブラウザで使える財務分析ツールです。HTML / CSS / Jav
 | scripts/build-icons.cjs | アイコン PNG の生成スクリプト（開発用） |
 | test/*.test.js | テスト（`node --test`） |
 
-### データ形式（version 1）
+### データ形式（version 2）
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "companyName": "",
   "periods": [
     { "label": "2025/3期", "pl": { "sales": null, "...": null }, "bs": { "cash": null, "...": null },
-      "adjustments": [], "debtLikeItems": [] }
+      "adjustments": [
+        { "id": "adj-…", "category": "executiveComp", "description": "役員報酬の調整", "amount": 3000, "memo": "根拠" }
+      ],
+      "debtLikeItems": [] }
   ]
 }
 ```
+
+`category` は `executiveComp`（役員報酬の調整）、`oneTime`（一過性の損益）、`relatedParty`（関連当事者取引）、`accountingPolicy`（会計方針の差異）、`businessChange`（事業の撤退・新設）、`other`（その他）のいずれかです。
+
+#### バージョンの移行
+
+| 旧 → 新 | 内容 | 関数 |
+| --- | --- | --- |
+| 1 → 2 | 調整項目を `{ id, category, description, amount, memo }` の形にそろえる（Phase 3） | `migrateV1toV2`（js/store.js） |
+
+保存データ・バックアップファイルとも、読み込み時に自動で最新の version に移行します。
 
 localStorage のキーは `finAnalysisTool.data` です。
 

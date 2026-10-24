@@ -1,9 +1,9 @@
 // データの保存・読込（localStorage のみ。外部送信は行わない）
 // storage は引数で差し替え可能（テストではメモリ上のモックを渡す）
-import { PL_FIELDS, BS_FIELDS, MAX_PERIODS, isNum } from './calc.js';
+import { PL_FIELDS, BS_FIELDS, MAX_PERIODS, ADJUSTMENT_CATEGORIES, isNum } from './calc.js';
 
 export const STORAGE_KEY = 'finAnalysisTool.data';
-export const CURRENT_VERSION = 1;
+export const CURRENT_VERSION = 2;
 
 function defaultStorage() {
   try {
@@ -50,7 +50,20 @@ export function getSampleData() {
           fixedAssets: 50000, totalAssets: 100000, payables: 8000, currentLiabilities: 30000,
           fixedLiabilities: 30000, interestBearingDebt: 40000, netAssets: 40000,
         },
-        adjustments: [],
+        adjustments: [
+          {
+            id: 'sample-2025-1', category: 'executiveComp', description: 'オーナー役員報酬を市場水準に調整',
+            amount: 3000, memo: '現行の役員報酬18,000千円に対し、同規模企業の水準を15,000千円と想定',
+          },
+          {
+            id: 'sample-2025-2', category: 'oneTime', description: '本社移転費用',
+            amount: 1200, memo: '2025/3期のみ発生。翌期以降は発生しない見込み',
+          },
+          {
+            id: 'sample-2025-3', category: 'relatedParty', description: '代表者所有物件の賃料を市場水準に調整',
+            amount: -800, memo: '現行賃料が近隣相場より年800千円低い',
+          },
+        ],
         debtLikeItems: [],
       },
     ],
@@ -60,7 +73,11 @@ export function getSampleData() {
 // 複数期のサンプル（最終期は getSampleData と同じ数値）
 export function getSampleMultiData() {
   const latest = getSampleData();
-  const period = (label, pl, bs) => ({ label, pl, bs, adjustments: [], debtLikeItems: [] });
+  const period = (label, pl, bs, adjustments = []) => ({ label, pl, bs, adjustments, debtLikeItems: [] });
+  const execComp = (id) => ({
+    id, category: 'executiveComp', description: 'オーナー役員報酬を市場水準に調整',
+    amount: 2500, memo: '現行の役員報酬17,500千円に対し、同規模企業の水準を15,000千円と想定',
+  });
   return {
     ...latest,
     periods: [
@@ -71,7 +88,7 @@ export function getSampleMultiData() {
         cash: 14000, receivables: 13500, inventory: 9800, currentAssets: 42000,
         fixedAssets: 48000, totalAssets: 90000, payables: 7200, currentLiabilities: 30000,
         fixedLiabilities: 32000, interestBearingDebt: 44000, netAssets: 28000,
-      }),
+      }, [execComp('sample-2023-1')]),
       period('2024/3期', {
         sales: 91000, costOfSales: 55510, sga: 28000, operatingIncome: 7490,
         ordinaryIncome: 6600, netIncome: 4200, depreciation: 4600, interestExpense: 1100,
@@ -79,7 +96,13 @@ export function getSampleMultiData() {
         cash: 17000, receivables: 14200, inventory: 10300, currentAssets: 46000,
         fixedAssets: 49000, totalAssets: 95000, payables: 7600, currentLiabilities: 30000,
         fixedLiabilities: 32800, interestBearingDebt: 42000, netAssets: 32200,
-      }),
+      }, [
+        execComp('sample-2024-1'),
+        {
+          id: 'sample-2024-2', category: 'oneTime', description: '一時的な補助金収入（営業利益に計上）',
+          amount: -1500, memo: '設備導入補助金。継続性なし',
+        },
+      ]),
       ...latest.periods,
     ],
   };
@@ -98,13 +121,36 @@ function normalizeFields(src, fields) {
   return o;
 }
 
+let idSeq = 0;
+export function newAdjustmentId() {
+  idSeq += 1;
+  return `adj-${Date.now().toString(36)}-${idSeq}`;
+}
+
+const CATEGORY_IDS = new Set(ADJUSTMENT_CATEGORIES.map((c) => c.id));
+
+export function createAdjustment(category = 'other') {
+  return { id: newAdjustmentId(), category, description: '', amount: null, memo: '' };
+}
+
+function normalizeAdjustment(a) {
+  if (!isPlainObject(a)) return null;
+  return {
+    id: typeof a.id === 'string' && a.id ? a.id : newAdjustmentId(),
+    category: CATEGORY_IDS.has(a.category) ? a.category : 'other',
+    description: typeof a.description === 'string' ? a.description : '',
+    amount: isNum(a.amount) ? a.amount : null,
+    memo: typeof a.memo === 'string' ? a.memo : '',
+  };
+}
+
 function normalizePeriod(p) {
   if (!isPlainObject(p)) return null;
   return {
     label: typeof p.label === 'string' ? p.label : '',
     pl: normalizeFields(p.pl, PL_FIELDS),
     bs: normalizeFields(p.bs, BS_FIELDS),
-    adjustments: Array.isArray(p.adjustments) ? p.adjustments : [],
+    adjustments: Array.isArray(p.adjustments) ? p.adjustments.map(normalizeAdjustment).filter(Boolean) : [],
     debtLikeItems: Array.isArray(p.debtLikeItems) ? p.debtLikeItems : [],
   };
 }
@@ -124,8 +170,24 @@ export function normalizeData(raw) {
 // version を確認して最新形式に移行する。未知の version は null。
 export function migrate(raw) {
   if (!isPlainObject(raw)) return null;
-  if (raw.version === CURRENT_VERSION) return raw;
+  let data = raw;
+  if (data.version === 1) data = migrateV1toV2(data);
+  if (data.version === CURRENT_VERSION) return data;
   return null;
+}
+
+// version 1 → 2：調整項目（adjustments）を { id, category, description, amount, memo } の形にそろえる。
+// version 1 では調整項目の入力欄がなかったため、通常は空配列。万一入っていた場合も可能な範囲で引き継ぐ。
+export function migrateV1toV2(v1) {
+  return {
+    ...v1,
+    version: 2,
+    periods: Array.isArray(v1.periods)
+      ? v1.periods.map((p) => (isPlainObject(p)
+        ? { ...p, adjustments: Array.isArray(p.adjustments) ? p.adjustments.map(normalizeAdjustment).filter(Boolean) : [] }
+        : p))
+      : v1.periods,
+  };
 }
 
 export function loadData(storage = defaultStorage()) {
@@ -211,7 +273,7 @@ export const BACKUP_FORMAT_VERSION = 1;
 export const LAST_BACKUP_KEY = 'finAnalysisTool.lastBackupAt';
 export const BACKUP_REMINDER_DAYS = 30;
 
-const SUPPORTED_DATA_VERSIONS = [1];
+const SUPPORTED_DATA_VERSIONS = [1, 2];
 
 export function createBackup(data, now = new Date()) {
   return {
@@ -267,6 +329,20 @@ export function validateData(raw) {
     for (const k of ['adjustments', 'debtLikeItems']) {
       if (p[k] !== undefined && !Array.isArray(p[k])) errors.push(`${where}.${k} が配列ではありません`);
     }
+    if (Array.isArray(p.adjustments)) {
+      p.adjustments.forEach((a, j) => {
+        const w = `${where}.adjustments[${j}]`;
+        if (!isPlainObject(a)) {
+          errors.push(`${w} が不正です`);
+          return;
+        }
+        if (a.amount !== undefined && a.amount !== null && !isNum(a.amount)) errors.push(`${w}.amount が数値ではありません`);
+        if (a.category !== undefined && !CATEGORY_IDS.has(a.category)) errors.push(`${w}.category が不明な区分です`);
+        for (const k of ['description', 'memo']) {
+          if (a[k] !== undefined && typeof a[k] !== 'string') errors.push(`${w}.${k} が文字列ではありません`);
+        }
+      });
+    }
   });
   return errors;
 }
@@ -277,7 +353,7 @@ export function parseBackup(text) {
   if (typeof text !== 'string' || text.trim() === '') return { ok: false, error: 'ファイルが空です' };
   let obj;
   try {
-    obj = JSON.parse(text.replace(/^﻿/, ''));
+    obj = JSON.parse(text.replace(/^\uFEFF/, ''));
   } catch {
     return { ok: false, error: 'JSON形式ではありません' };
   }
@@ -329,4 +405,26 @@ export function hasAnyData(data) {
     || data.periods.some((p) => p.label
       || Object.values(p.pl).some(isNum)
       || Object.values(p.bs).some(isNum));
+}
+
+// ---- 調整項目の操作（元のデータは変更せず、新しいデータを返す） ----
+
+function updatePeriod(data, index, fn) {
+  if (index < 0 || index >= data.periods.length) return data;
+  return { ...data, periods: data.periods.map((p, i) => (i === index ? fn(p) : p)) };
+}
+
+export function addAdjustment(data, periodIndex, item = createAdjustment()) {
+  return updatePeriod(data, periodIndex, (p) => ({ ...p, adjustments: [...p.adjustments, item] }));
+}
+
+export function updateAdjustment(data, periodIndex, id, changes) {
+  return updatePeriod(data, periodIndex, (p) => ({
+    ...p,
+    adjustments: p.adjustments.map((a) => (a.id === id ? { ...a, ...changes } : a)),
+  }));
+}
+
+export function removeAdjustment(data, periodIndex, id) {
+  return updatePeriod(data, periodIndex, (p) => ({ ...p, adjustments: p.adjustments.filter((a) => a.id !== id) }));
 }

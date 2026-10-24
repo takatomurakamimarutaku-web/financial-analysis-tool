@@ -366,6 +366,18 @@ export function buildResultText(data, results, warnings = [], periodIndex = 0) {
       lines.push(`${ind.name}：${formatValue(results[ind.id], ind.unit)}`);
     }
   }
+  const items = Array.isArray(period?.adjustments) ? period.adjustments : [];
+  if (items.length) {
+    const n = calcNormalizedEbitda(period);
+    const signedAmount = (v) => (v > 0 ? `+${formatAmount(v)}` : formatAmount(v));
+    lines.push('');
+    lines.push('■ 正常化EBITDA');
+    lines.push(`報告EBITDA：${formatAmount(n.reported)}`);
+    for (const c of n.byCategory.filter((x) => x.count > 0)) lines.push(`　${c.name}：${signedAmount(c.total)}`);
+    lines.push(`正常化EBITDA：${formatAmount(n.normalized)}`);
+    lines.push(`正常化EBITDAマージン：${formatValue({ value: n.margin, status: isNum(n.margin) ? 'ok' : 'na' }, '%')}`);
+    for (const w of getAdjustmentWarnings(period)) lines.push(`※${w.message}`);
+  }
   return lines.join('\n');
 }
 
@@ -420,6 +432,12 @@ function amountResult(v) {
   return isNum(v) ? { value: v, status: 'ok' } : { value: null, status: 'na' };
 }
 
+// 比較表に追加する正常化EBITDAの行（Phase 3）
+export const NORMALIZED_ROWS = [
+  { id: 'normalizedEbitda', name: '正常化EBITDA', unit: '千円', get: (r) => r.normalized },
+  { id: 'normalizedEbitdaMargin', name: '正常化EBITDAマージン', unit: '%', get: (r) => r.margin },
+];
+
 // 比較表のデータを作る。
 // 戻り値：{ labels: [期名], rows: [{ id, name, unit, group, averageable, cells: [{ result, change }] }] }
 // change は先頭の期では null。
@@ -450,5 +468,90 @@ export function buildComparison(data, basis = 'end') {
       cells: makeCells((p, i) => perPeriod[i][ind.id]),
     });
   }
+  for (const r of NORMALIZED_ROWS) {
+    rows.push({
+      id: r.id, name: r.name, unit: r.unit, group: 'ma', averageable: false,
+      cells: makeCells((p) => amountResult(r.get(calcNormalizedEbitda(p)))),
+    });
+  }
+  return { labels: periods.map((p) => p.label), rows };
+}
+
+// ---- 正常化EBITDA（Phase 3） ----
+
+export const ADJUSTMENT_CATEGORIES = [
+  { id: 'executiveComp', name: '役員報酬の調整' },
+  { id: 'oneTime', name: '一過性の損益' },
+  { id: 'relatedParty', name: '関連当事者取引' },
+  { id: 'accountingPolicy', name: '会計方針の差異' },
+  { id: 'businessChange', name: '事業の撤退・新設' },
+  { id: 'other', name: 'その他' },
+];
+
+const CATEGORY_IDS = new Set(ADJUSTMENT_CATEGORIES.map((c) => c.id));
+
+export function categoryName(id) {
+  return ADJUSTMENT_CATEGORIES.find((c) => c.id === id)?.name ?? 'その他';
+}
+
+// 正常化EBITDA = 報告EBITDA + 調整額合計（プラス=加算、マイナス=減算）
+// 金額が未入力の調整項目は合計に含めない（警告の対象）。
+// 戻り値：{ reported, adjustmentTotal, normalized, margin, byCategory: [{ id, name, total, count }] }
+export function calcNormalizedEbitda(period) {
+  const ctx = toCtx(period);
+  const reported = ebitda(ctx);
+  const items = Array.isArray(period?.adjustments) ? period.adjustments : [];
+  const byCategory = ADJUSTMENT_CATEGORIES.map((c) => ({ id: c.id, name: c.name, total: 0, count: 0 }));
+  let adjustmentTotal = 0;
+  for (const item of items) {
+    const cat = byCategory.find((c) => c.id === (CATEGORY_IDS.has(item?.category) ? item.category : 'other'));
+    cat.count += 1;
+    if (isNum(item?.amount)) {
+      cat.total += item.amount;
+      adjustmentTotal += item.amount;
+    }
+  }
+  const normalized = isNum(reported) ? reported + adjustmentTotal : null;
+  return {
+    reported,
+    adjustmentTotal,
+    normalized,
+    margin: safeDiv(normalized, ctx.pl.sales),
+    byCategory,
+  };
+}
+
+// 調整項目の警告。根拠メモが空 →「根拠未記載」、金額が未入力 →「金額未入力」
+export function getAdjustmentWarnings(period) {
+  const items = Array.isArray(period?.adjustments) ? period.adjustments : [];
+  const warnings = [];
+  items.forEach((item, index) => {
+    const label = item?.description ? `「${item.description}」` : `${index + 1}件目`;
+    if (!String(item?.memo ?? '').trim()) {
+      warnings.push({ type: 'memoMissing', index, message: `調整項目${label}：根拠未記載` });
+    }
+    if (!isNum(item?.amount)) {
+      warnings.push({ type: 'amountMissing', index, message: `調整項目${label}：金額未入力（合計に含めていません）` });
+    }
+  });
+  return warnings;
+}
+
+// EBITDAブリッジ表（行 = 報告EBITDA → 区分ごとの調整 → 調整額合計 → 正常化EBITDA → マージン、列 = 各期）
+// 区分の行は、いずれかの期に調整項目がある区分だけを表示する。
+export function buildEbitdaBridge(data) {
+  const periods = data?.periods ?? [];
+  const calcs = periods.map(calcNormalizedEbitda);
+  const used = ADJUSTMENT_CATEGORIES.filter((c) => calcs.some((r) => r.byCategory.find((x) => x.id === c.id).count > 0));
+  const rows = [
+    { id: 'reported', name: '報告EBITDA', unit: '千円', kind: 'base', values: calcs.map((r) => r.reported) },
+    ...used.map((c) => ({
+      id: `cat:${c.id}`, name: c.name, unit: '千円', kind: 'adjustment',
+      values: calcs.map((r) => r.byCategory.find((x) => x.id === c.id).total),
+    })),
+    { id: 'adjustmentTotal', name: '調整額合計', unit: '千円', kind: 'subtotal', values: calcs.map((r) => r.adjustmentTotal) },
+    { id: 'normalized', name: '正常化EBITDA', unit: '千円', kind: 'total', values: calcs.map((r) => r.normalized) },
+    { id: 'margin', name: '正常化EBITDAマージン', unit: '%', kind: 'ratio', values: calcs.map((r) => r.margin) },
+  ];
   return { labels: periods.map((p) => p.label), rows };
 }

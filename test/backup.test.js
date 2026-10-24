@@ -68,7 +68,7 @@ describe('インポートの検証：異常系（読み込まずにエラー）'
     ['データ本体だけ（ラッパーなし）', JSON.stringify(getSampleData()), /バックアップファイルではありません/],
     ['formatVersion が未対応', wrap(getSampleData(), { formatVersion: 99 }), /対応していないバックアップ形式/],
     ['data がない', wrap(undefined), /形式が正しくありません/],
-    ['data.version が未対応', wrap({ ...getSampleData(), version: 2 }), /対応していないデータのバージョン/],
+    ['data.version が未対応', wrap({ ...getSampleData(), version: 99 }), /対応していないデータのバージョン/],
     ['data.version がない', wrap({ companyName: '', periods: [] }), /対応していないデータのバージョン/],
     ['periods がない', wrap({ version: 1 }), /periods がありません/],
     ['periods が0件', wrap({ version: 1, periods: [] }), /期の数が不正/],
