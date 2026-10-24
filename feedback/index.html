@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<meta name="robots" content="noindex">
+<link rel="icon" href="../icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" sizes="180x180" href="../icons/icon-180.png">
+<title>数字のミカタ 感想フォーム</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* レイアウト：1カラムのカード列。上に固定の進み具合バー、下に回答をまとめるパネル */
+:root {
+  --bg: #eef2f4;
+  --surface: #ffffff;
+  --text: #17222e;
+  --muted: #5b6876;
+  --line: #d6dde3;
+  --brand: #0f766e;
+  --brand-2: #1e40af;
+  --brand-soft: #e1f2ef;
+  --chip: #f5f8f9;
+  --sun: #f2b84b;
+  --warn: #9a4a00;
+  --warn-bg: #fdeedd;
+  --on-brand: #ffffff;
+  --font: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", Meiryo, sans-serif;
+  --r: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10171c; --surface: #19232a; --text: #e5ebef; --muted: #9babb6; --line: #2c3a43;
+    --brand: #3fb8a9; --brand-2: #7ea2f4; --brand-soft: #163a37; --chip: #1f2b33; --sun: #f2c46b;
+    --warn: #f6c27f; --warn-bg: #3d2a12; --on-brand: #0b1a18; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #10171c; --surface: #19232a; --text: #e5ebef; --muted: #9babb6; --line: #2c3a43;
+  --brand: #3fb8a9; --brand-2: #7ea2f4; --brand-soft: #163a37; --chip: #1f2b33; --sun: #f2c46b;
+  --warn: #f6c27f; --warn-bg: #3d2a12; --on-brand: #0b1a18; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 16px; line-height: 1.7; margin: 0; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+.wrap { max-width: 640px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 48px; display: grid; gap: 18px; }
+h1, h2, h3 { text-wrap: balance; margin: 0; line-height: 1.35; }
+h2 { font-size: 1.2rem; }
+p { margin: 0; }
+.muted { color: var(--muted); font-size: .92rem; }
+svg { display: block; }
+
+/* 進み具合 */
+.progress { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line); padding-block: 8px; }
+.progress .in { max-width: 640px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; align-items: center; gap: 12px; font-size: .85rem; color: var(--muted); }
+.bar { flex: 1; height: 8px; border-radius: 99px; background: var(--chip); overflow: hidden; border: 1px solid var(--line); }
+.bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--brand), var(--brand-2)); transition: width .3s; }
+.progress b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* ヒーロー */
+.hero { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; padding-top: 22px; }
+.hero h1 { font-size: 1.5rem; }
+.hero .lead { margin-top: 6px; color: var(--muted); }
+.hero svg { width: 112px; height: auto; }
+.pill { display: inline-block; font-size: .78rem; letter-spacing: .04em; padding: 2px 10px; border-radius: 99px; background: var(--brand-soft); color: var(--brand); font-weight: 700; margin-bottom: 6px; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 18px 16px; display: grid; gap: 14px; }
+.card > header { display: grid; gap: 4px; }
+
+/* はじめにの3ステップ */
+.steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.step { display: grid; gap: 6px; justify-items: center; text-align: center; font-size: .85rem; line-height: 1.5; }
+.step svg { width: 100%; max-width: 120px; height: auto; }
+.step .n { font-weight: 700; color: var(--brand); font-size: .8rem; }
+@media (max-width: 420px) { .steps { grid-template-columns: 1fr; } .step { grid-template-columns: 96px 1fr; justify-items: start; text-align: left; align-items: center; } .step svg { grid-row: span 3; } }
+.howto { background: var(--chip); border-radius: 10px; padding: 10px 12px; font-size: .88rem; display: grid; gap: 4px; }
+.btn { appearance: none; border: 0; border-radius: 12px; padding: 13px 18px; font: inherit; font-weight: 700; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; }
+.btn.primary { background: var(--brand); color: var(--on-brand); }
+.btn.ghost { background: var(--chip); color: var(--text); border: 1px solid var(--line); }
+.btn.line { background: #06c755; color: #ffffff; }
+.btn:focus-visible, .chip:focus-within, .face:focus-within, .num:focus-within { outline: 3px solid var(--brand-2); outline-offset: 2px; }
+.privacy { display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: center; background: var(--brand-soft); border-radius: 12px; padding: 12px; font-size: .9rem; }
+
+/* 質問 */
+.q { display: grid; gap: 10px; }
+.q + .q { border-top: 1px dashed var(--line); padding-top: 14px; }
+.q-title { font-weight: 700; display: flex; gap: 8px; align-items: baseline; }
+.q-title .opt { font-size: .75rem; font-weight: 400; color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { position: relative; }
+.chip input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.chip span { display: inline-flex; align-items: center; gap: 6px; min-height: 42px; padding: 8px 14px; border-radius: 99px; border: 1.5px solid var(--line); background: var(--chip); font-size: .92rem; line-height: 1.3; }
+.chip input:checked + span { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); font-weight: 700; }
+.chip input:checked + span::before { content: "✓"; }
+.faces { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.face { position: relative; display: grid; justify-items: center; gap: 2px; font-size: .7rem; color: var(--muted); text-align: center; line-height: 1.3; }
+.face input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.face svg { width: 44px; height: 44px; border-radius: 50%; transition: transform .15s; }
+.face svg circle { fill: var(--chip); stroke: var(--line); stroke-width: 2; }
+.face svg path, .face svg .eye { stroke: var(--muted); fill: none; stroke-width: 2.4; stroke-linecap: round; }
+.face svg .eye { fill: var(--muted); stroke: none; }
+.face input:checked + svg { transform: scale(1.12); }
+.face input:checked + svg circle { fill: var(--sun); stroke: var(--sun); }
+.face input:checked + svg path { stroke: var(--text); }
+.face input:checked + svg .eye { fill: var(--text); }
+.face input:checked ~ small { color: var(--text); font-weight: 700; }
+.rate-row { display: grid; gap: 6px; }
+.rate-row + .rate-row { margin-top: 6px; }
+.nums { display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 3px; }
+.num { position: relative; }
+.num input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.num span { display: grid; place-items: center; height: 40px; border-radius: 8px; background: var(--chip); border: 1px solid var(--line); font-size: .85rem; font-variant-numeric: tabular-nums; }
+.num input:checked + span { background: var(--brand); color: var(--on-brand); border-color: var(--brand); font-weight: 700; }
+.scale-label { display: flex; justify-content: space-between; font-size: .72rem; color: var(--muted); }
+textarea, input[type="text"] { width: 100%; font: inherit; font-size: 16px; color: var(--text); background: var(--chip); border: 1.5px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+textarea { min-height: 84px; resize: vertical; }
+textarea:focus, input[type="text"]:focus { outline: none; border-color: var(--brand); }
+.bug { border-color: var(--warn); }
+.bug-toggle { display: flex; gap: 12px; align-items: center; }
+.bug-body { display: grid; gap: 14px; background: var(--warn-bg); border-radius: 12px; padding: 14px 12px; }
+.bug-body .tip { color: var(--warn); font-size: .85rem; }
+
+/* 送る */
+.send { display: grid; gap: 12px; }
+.send pre { white-space: pre-wrap; word-break: break-all; background: var(--chip); border: 1px solid var(--line); border-radius: 10px; padding: 12px; font-size: .8rem; line-height: 1.6; max-height: 260px; overflow: auto; margin: 0; font-family: var(--font); }
+.send .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.toast { font-size: .88rem; color: var(--brand); min-height: 1.4em; }
+footer.end { text-align: center; color: var(--muted); font-size: .8rem; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="progress" aria-live="polite"><div class="in"><span>回答</span><div class="bar"><i id="barFill"></i></div><span><b id="answered">0</b> / <span id="total">10</span></span></div></div>
+
+<div class="wrap">
+  <section class="hero">
+    <div>
+      <span class="pill">テストのお願い</span>
+      <h1>数字のミカタを<br>触ってみてください</h1>
+      <p class="lead">決算書の数字を入れると、指標・前期比較・図解がスマホで見られるアプリです。10〜15分ほど触ってから、下の質問にタップで答えてください。</p>
+    </div>
+    <svg viewBox="0 0 120 150" aria-hidden="true">
+      <rect x="18" y="6" width="74" height="136" rx="14" fill="var(--surface)" stroke="var(--text)" stroke-width="3"/>
+      <rect x="44" y="12" width="22" height="5" rx="2.5" fill="var(--line)"/>
+      <rect x="26" y="24" width="58" height="12" rx="3" fill="var(--brand)"/>
+      <rect x="32" y="92" width="10" height="30" rx="2" fill="var(--brand-2)" opacity=".55"/>
+      <rect x="48" y="78" width="10" height="44" rx="2" fill="var(--brand-2)" opacity=".75"/>
+      <rect x="64" y="60" width="10" height="62" rx="2" fill="var(--brand-2)"/>
+      <path d="M30 84 Q48 76 56 66 T78 52" fill="none" stroke="var(--sun)" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="84" cy="96" r="20" fill="var(--brand-soft)" stroke="var(--brand)" stroke-width="5" opacity=".95"/>
+      <line x1="98" y1="110" x2="112" y2="124" stroke="var(--brand)" stroke-width="8" stroke-linecap="round"/>
+    </svg>
+  </section>
+
+  <section class="card" id="start">
+    <header><h2>はじめに</h2><p class="muted">ホーム画面への追加は、しなくても大丈夫です。</p></header>
+    <div class="steps">
+      <div class="step">
+        <svg viewBox="0 0 120 90" aria-hidden="true">
+          <rect x="38" y="6" width="44" height="78" rx="8" fill="var(--surface)" stroke="var(--text)" stroke-width="2.5"/>
+          <rect x="44" y="16" width="32" height="8" rx="4" fill="var(--chip)" stroke="var(--line)"/>
+          <rect x="44" y="30" width="32" height="40" rx="4" fill="var(--brand-soft)"/>
+          <path d="M52 56 l6 -10 l6 6 l6 -12" fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="86" cy="62" r="11" fill="var(--sun)" opacity=".35"/>
+          <path d="M84 52 v18 l4 -4 l4 8" fill="none" stroke="var(--text)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="n">1</span>
+        <span>下のボタンでアプリを開く</span>
+      </div>
+      <div class="step">
+        <svg viewBox="0 0 120 90" aria-hidden="true">
+          <rect x="8" y="26" width="40" height="40" rx="9" fill="var(--chip)" stroke="var(--brand-2)" stroke-width="2.5"/>
+          <path d="M28 54 V34 M21 41 l7 -7 l7 7" fill="none" stroke="var(--brand-2)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M54 46 h12 M61 40 l6 6 l-6 6" fill="none" stroke="var(--muted)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <rect x="72" y="26" width="40" height="40" rx="9" fill="var(--chip)" stroke="var(--text)" stroke-width="2.5"/>
+          <path d="M92 36 v20 M82 46 h20" stroke="var(--text)" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+        <span class="n">2</span>
+        <span>共有ボタン →「ホーム画面に追加」</span>
+      </div>
+      <div class="step">
+        <svg viewBox="0 0 120 90" aria-hidden="true">
+          <rect x="14" y="14" width="92" height="62" rx="8" fill="var(--surface)" stroke="var(--text)" stroke-width="2.5"/>
+          <rect x="22" y="22" width="30" height="8" rx="3" fill="var(--brand)"/>
+          <rect x="56" y="22" width="20" height="8" rx="3" fill="var(--line)"/>
+          <rect x="80" y="22" width="18" height="8" rx="3" fill="var(--line)"/>
+          <rect x="26" y="52" width="10" height="16" rx="2" fill="var(--brand-2)" opacity=".6"/>
+          <rect x="42" y="44" width="10" height="24" rx="2" fill="var(--brand-2)" opacity=".8"/>
+          <rect x="58" y="38" width="10" height="30" rx="2" fill="var(--brand-2)"/>
+          <rect x="76" y="40" width="22" height="6" rx="3" fill="var(--sun)"/>
+          <rect x="76" y="52" width="16" height="6" rx="3" fill="var(--line)"/>
+        </svg>
+        <span class="n">3</span>
+        <span>「サンプルデータ」を読み込んで触る</span>
+      </div>
+    </div>
+    <div class="howto">
+      <span><b>iPhone</b>：Safari で開く → 画面下の共有ボタン（□に↑）→「ホーム画面に追加」</span>
+      <span><b>Android</b>：Chrome で開く → 右上の「︙」→「ホーム画面に追加」</span>
+    </div>
+    <a class="btn primary" id="openApp" href="https://takatomurakamimarutaku-web.github.io/financial-analysis-tool/" target="_blank" rel="noopener">数字のミカタを開く</a>
+    <div class="privacy">
+      <svg viewBox="0 0 64 64" aria-hidden="true">
+        <rect x="16" y="4" width="32" height="56" rx="7" fill="var(--surface)" stroke="var(--brand)" stroke-width="2.5"/>
+        <rect x="23" y="30" width="18" height="15" rx="3" fill="var(--brand)"/>
+        <path d="M26 30 v-5 a6 6 0 0 1 12 0 v5" fill="none" stroke="var(--brand)" stroke-width="2.5"/>
+        <circle cx="32" cy="37" r="2" fill="var(--on-brand)"/>
+      </svg>
+      <p>入力した数字は<b>スマホの中だけ</b>に保存され、外部へは送信されません。アクセス解析や広告もありません。このフォームの回答も、あなたが「送る」を押すまでどこにも送られません。</p>
+    </div>
+  </section>
+
+  <form id="form" class="card" novalidate>
+    <header><h2>感想を聞かせてください</h2><p class="muted">分かる範囲で大丈夫です。タップで選ぶだけの質問がほとんどです。</p></header>
+
+    <div class="q" data-q="device">
+      <div class="q-title">① 使った端末</div>
+      <div class="chips" data-name="device" data-type="radio" data-options="iPhone|Android|iPad|パソコン"></div>
+    </div>
+
+    <div class="q" data-q="level">
+      <div class="q-title">② 会計・決算書にどのくらい慣れていますか</div>
+      <div class="chips" data-name="level" data-type="radio" data-options="仕事で使っている|少し分かる|ほとんど分からない"></div>
+    </div>
+
+    <div class="q" data-q="first">
+      <div class="q-title">③ 最初の画面で、何のアプリかすぐ分かりましたか</div>
+      <div class="chips" data-name="first" data-type="radio" data-options="すぐ分かった|なんとなく分かった|分からなかった"></div>
+    </div>
+
+    <div class="q" data-q="tried">
+      <div class="q-title">④ 試したこと <span class="opt">いくつでも</span></div>
+      <div class="chips" data-name="tried" data-type="checkbox" data-options="サンプル読込|数字の入力|指標の説明（?）|比較タブ|図解タブ|評価バッジ|設定の切替|レポート|バックアップ|ホーム画面に追加"></div>
+    </div>
+
+    <div class="q" data-q="best">
+      <div class="q-title">⑤ 一番よかった機能</div>
+      <div class="chips" data-name="best" data-type="radio" data-options="指標の一覧|指標の説明|前期との比較|グラフ|図解|評価バッジ|レポート|特になし"></div>
+    </div>
+
+    <div class="q" data-q="rate">
+      <div class="q-title">⑥ 使ってみた印象</div>
+      <div class="rate-row"><span class="muted">見やすさ</span><div class="faces" data-name="rate_look"></div></div>
+      <div class="rate-row"><span class="muted">操作のしやすさ</span><div class="faces" data-name="rate_use"></div></div>
+      <div class="rate-row"><span class="muted">説明の分かりやすさ</span><div class="faces" data-name="rate_text"></div></div>
+    </div>
+
+    <div class="q" data-q="lost">
+      <div class="q-title">⑦ 迷ったところ <span class="opt">いくつでも</span></div>
+      <div class="chips" data-name="lost" data-type="checkbox" data-options="最初に何をすればいいか|数字の入れ方|マイナスの入れ方|指標の意味|画面の移動|設定の場所|文字が小さい|特になし"></div>
+      <textarea id="lost_note" name="lost_note" placeholder="具体的に（任意）例：比較タブで期の追加の仕方が分からなかった"></textarea>
+    </div>
+
+    <div class="q" data-q="want">
+      <div class="q-title">⑧ あれば使いたい機能 <span class="opt">いくつでも</span></div>
+      <div class="chips" data-name="want" data-type="checkbox" data-options="会計ソフトのデータ取込|複数の会社を保存|Excelで出力|業界平均との比較|分析コメントの自動作成|資金繰り表|特になし"></div>
+      <input type="text" id="want_note" name="want_note" placeholder="ほかに欲しい機能（任意）">
+    </div>
+
+    <div class="q" data-q="again">
+      <div class="q-title">⑨ 仕事や勉強で、また使いたいと思いますか</div>
+      <div class="nums" data-name="again"></div>
+      <div class="scale-label"><span>0 使わない</span><span>10 ぜひ使いたい</span></div>
+    </div>
+
+    <div class="q" data-q="free">
+      <div class="q-title">⑩ ひとこと <span class="opt">任意</span></div>
+      <textarea id="good" name="good" placeholder="よかったところ"></textarea>
+      <textarea id="fix" name="fix" placeholder="直してほしいところ"></textarea>
+    </div>
+  </form>
+
+  <section class="card bug" id="bugCard">
+    <header><h2>おかしな動きはありましたか</h2><p class="muted">表示が崩れた、計算が合わない、ボタンが反応しない、など。</p></header>
+    <div class="chips bug-toggle" data-name="bug" data-type="radio" data-options="なかった|あった"></div>
+    <div class="bug-body" id="bugBody" hidden>
+      <div class="q">
+        <div class="q-title">どの画面で</div>
+        <div class="chips" data-name="bug_where" data-type="radio" data-options="入力|比較|図解|設定|レポート|起動時|分からない"></div>
+      </div>
+      <div class="q">
+        <div class="q-title">何をしたら、どうなりましたか</div>
+        <textarea id="bug_what" name="bug_what" placeholder="例：比較タブで「平均残高」を押したら、表が真っ白になった"></textarea>
+      </div>
+      <div class="q">
+        <div class="q-title">何回起きましたか</div>
+        <div class="chips" data-name="bug_freq" data-type="radio" data-options="毎回|ときどき|1回だけ"></div>
+      </div>
+      <div class="q">
+        <div class="q-title">アプリのバージョン <span class="opt">分かれば</span></div>
+        <input type="text" id="bug_ver" name="bug_ver" placeholder="「設定」→「このアプリについて」に表示（例：v15）">
+      </div>
+      <p class="tip">スクリーンショットがあれば、送るときに一緒に添付してください。実在の会社の数字が写っている場合は隠してください。</p>
+    </div>
+  </section>
+
+  <section class="card send" id="send">
+    <header><h2>回答を送る</h2><p class="muted">下の文章ができあがります。送り先を選んで、そのまま送信してください。</p></header>
+    <input type="text" id="nick" name="nick" placeholder="お名前・ニックネーム（任意）">
+    <pre id="preview"></pre>
+    <div class="row">
+      <button type="button" class="btn primary" id="shareBtn">送る（共有）</button>
+      <a class="btn line" id="lineBtn" href="#" target="_blank" rel="noopener">LINEで送る</a>
+      <button type="button" class="btn ghost" id="copyBtn">文章をコピー</button>
+    </div>
+    <p class="toast" id="toast" role="status"></p>
+  </section>
+
+  <footer class="end">ご協力ありがとうございます。計算結果は参考値で、税務や投資の助言ではありません。</footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var FORM_VERSION = 'f1';
+  var KEY = 'mikataFeedback.draft';
+  var FACE_LABELS = ['悪い', 'いまいち', 'ふつう', 'よい', 'とてもよい'];
+  var MOUTHS = ['M15 33 Q22 25 29 33', 'M15 32 Q22 28 29 32', 'M15 30 L29 30', 'M15 28 Q22 33 29 28', 'M14 27 Q22 37 30 27'];
+  var QUESTIONS = ['device', 'level', 'first', 'tried', 'best', 'rate', 'lost', 'want', 'again', 'free'];
+
+  function el(tag, attrs, html) {
+    var e = document.createElement(tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (html != null) e.innerHTML = html;
+    return e;
+  }
+
+  // 選択肢（チップ）を作る
+  document.querySelectorAll('.chips[data-options]').forEach(function (box) {
+    var name = box.dataset.name, type = box.dataset.type;
+    box.dataset.options.split('|').forEach(function (opt, i) {
+      var label = el('label', { 'class': 'chip' });
+      var input = el('input', { type: type, name: name, value: opt, id: name + '_' + i });
+      var span = document.createElement('span');
+      span.textContent = opt;
+      label.appendChild(input); label.appendChild(span);
+      box.appendChild(label);
+    });
+  });
+  // 顔の5段階
+  document.querySelectorAll('.faces').forEach(function (box) {
+    var name = box.dataset.name;
+    FACE_LABELS.forEach(function (lab, i) {
+      var label = el('label', { 'class': 'face' });
+      label.appendChild(el('input', { type: 'radio', name: name, value: String(i + 1), id: name + '_' + i, 'aria-label': lab }));
+      label.insertAdjacentHTML('beforeend', '<svg viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="20"/><circle class="eye" cx="15.5" cy="18" r="2.4"/><circle class="eye" cx="28.5" cy="18" r="2.4"/><path d="' + MOUTHS[i] + '"/></svg>');
+      var s = document.createElement('small'); s.textContent = lab; label.appendChild(s);
+      box.appendChild(label);
+    });
+  });
+  // 0〜10
+  document.querySelectorAll('.nums').forEach(function (box) {
+    for (var i = 0; i <= 10; i++) {
+      var label = el('label', { 'class': 'num' });
+      label.appendChild(el('input', { type: 'radio', name: box.dataset.name, value: String(i), id: box.dataset.name + '_' + i, 'aria-label': i + '点' }));
+      var s = document.createElement('span'); s.textContent = i; label.appendChild(s);
+      box.appendChild(label);
+    }
+  });
+
+  var all = function () { return Array.prototype.slice.call(document.querySelectorAll('input, textarea')); };
+  function val(name) {
+    var checked = document.querySelectorAll('input[name="' + name + '"]:checked');
+    if (checked.length) return Array.prototype.map.call(checked, function (c) { return c.value; }).join('、');
+    var f = document.getElementById(name);
+    return f && (f.type === 'text' || f.tagName === 'TEXTAREA') ? f.value.trim() : '';
+  }
+  function faceText(name) { var v = val(name); return v ? v + '（' + FACE_LABELS[Number(v) - 1] + '）' : ''; }
+
+  function answeredCount() {
+    var qs = { device: val('device'), level: val('level'), first: val('first'), tried: val('tried'), best: val('best'),
+      rate: val('rate_look') || val('rate_use') || val('rate_text'), lost: val('lost') || val('lost_note'),
+      want: val('want') || val('want_note'), again: val('again'), free: val('good') || val('fix') };
+    return QUESTIONS.filter(function (q) { return qs[q]; }).length;
+  }
+
+  function buildText() {
+    var L = [];
+    var line = function (k, v) { L.push(k + '：' + (v || '（未回答）')); };
+    L.push('【数字のミカタ 感想】' + FORM_VERSION);
+    if (val('nick')) line('名前', val('nick'));
+    line('①端末', val('device'));
+    line('②会計の慣れ', val('level'));
+    line('③最初に分かったか', val('first'));
+    line('④試したこと', val('tried'));
+    line('⑤一番よかった', val('best'));
+    line('⑥見やすさ', faceText('rate_look'));
+    line('⑥操作のしやすさ', faceText('rate_use'));
+    line('⑥説明の分かりやすさ', faceText('rate_text'));
+    line('⑦迷ったところ', [val('lost'), val('lost_note')].filter(Boolean).join(' ／ '));
+    line('⑧欲しい機能', [val('want'), val('want_note')].filter(Boolean).join(' ／ '));
+    line('⑨また使いたい', val('again') ? val('again') + ' / 10' : '');
+    if (val('good')) line('⑩よかった', val('good'));
+    if (val('fix')) line('⑩直してほしい', val('fix'));
+    if (val('bug') === 'あった') {
+      L.push('―― 不具合 ――');
+      line('画面', val('bug_where'));
+      line('内容', val('bug_what'));
+      line('頻度', val('bug_freq'));
+      line('バージョン', val('bug_ver'));
+    } else if (val('bug')) {
+      line('不具合', val('bug'));
+    }
+    L.push('（端末情報：' + navigator.userAgent.replace(/\s+/g, ' ').slice(0, 160) + '）');
+    return L.join('\n');
+  }
+
+  var preview = document.getElementById('preview');
+  var lineBtn = document.getElementById('lineBtn');
+  function render() {
+    var text = buildText();
+    preview.textContent = text;
+    lineBtn.href = 'https://line.me/R/share?text=' + encodeURIComponent(text);
+    var n = answeredCount();
+    document.getElementById('answered').textContent = n;
+    document.getElementById('total').textContent = QUESTIONS.length;
+    document.getElementById('barFill').style.width = (n / QUESTIONS.length * 100) + '%';
+    document.getElementById('bugBody').hidden = val('bug') !== 'あった';
+  }
+
+  // 下書きを端末内に保存（同じ端末で開き直しても続きから）
+  function save() {
+    var data = {};
+    all().forEach(function (f) {
+      if (f.type === 'radio' || f.type === 'checkbox') { if (f.checked) data[f.id] = true; }
+      else if (f.value) data[f.id] = f.value;
+    });
+    try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) { /* 保存できなくても回答はできる */ }
+  }
+  function load() {
+    var data = null;
+    try { data = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { data = null; }
+    if (!data) return;
+    all().forEach(function (f) {
+      if (!(f.id in data)) return;
+      if (f.type === 'radio' || f.type === 'checkbox') f.checked = true; else f.value = data[f.id];
+    });
+  }
+
+  var toast = document.getElementById('toast');
+  function say(msg) { toast.textContent = msg; }
+
+  document.addEventListener('input', function () { render(); save(); });
+  document.addEventListener('change', function () { render(); save(); });
+  document.getElementById('form').addEventListener('submit', function (e) { e.preventDefault(); });
+
+  document.getElementById('shareBtn').addEventListener('click', function () {
+    var text = buildText();
+    if (navigator.share) {
+      navigator.share({ text: text }).then(function () { say('共有画面を閉じました。送信できていれば完了です。ありがとうございました！'); })
+        .catch(function (err) { if (err && err.name !== 'AbortError') say('共有画面を開けませんでした。「文章をコピー」を使ってください。'); });
+    } else {
+      say('この画面では共有ボタンが使えません。「LINEで送る」か「文章をコピー」を使ってください。');
+    }
+  });
+  document.getElementById('copyBtn').addEventListener('click', function () {
+    var text = buildText();
+    var fallback = function () {
+      var r = document.createRange(); r.selectNodeContents(preview);
+      var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+      say('文章を選択しました。長押しで「コピー」してください。');
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { say('コピーしました。LINEやメールに貼り付けて送ってください。'); }, fallback);
+    } else fallback();
+  });
+
+  load();
+  render();
+})();
+</script>
+</body>
+</html>
