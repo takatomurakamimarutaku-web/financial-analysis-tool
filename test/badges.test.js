@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  BADGE_TARGETS, TKC_TARGETS, JFC_INDUSTRIES, CRITERIA,
+  BADGE_TARGETS, TKC_TARGETS, JFC_INDUSTRIES, CRITERIA, JFC_DATA_CHECKED_AT, jfcSurveyLabel, jfcYearsSummary, jfcUpdateDue,
   createDefaultEvaluation, normalizeEvaluation, ruleFor, judge, badgeFor, badgesFor,
   criterionLabel, guideFor, boundsText, setCriterion, setOverride, resetOverrides,
   setTkcValue, setBadgeDisabled, reportNote, isModified,
@@ -34,6 +34,22 @@ describe('評価バッジ：基準セット', () => {
     assert.equal(JFC_INDUSTRIES.find((x) => x.id === 'construction').year, '2024年度');
     assert.equal(JFC_INDUSTRIES.find((x) => x.id === 'manufacturing').year, '2024年度');
     assert.equal(JFC_INDUSTRIES.find((x) => x.id === 'services').year, '2025年度');
+  });
+  test('公庫データの年度・公表月（年次更新の確認用）', () => {
+    for (const ind of JFC_INDUSTRIES) {
+      assert.match(ind.published, /^\d{4}-(0[1-9]|1[0-2])$/, ind.id);
+      // 公表は調査年度の翌年
+      assert.equal(Number(ind.published.slice(0, 4)), Number(ind.year.slice(0, 4)) + 1, ind.id);
+      assert.ok(ind.count > 0 && ind.goodCount > 0 && ind.goodCount <= ind.count, ind.id);
+    }
+    assert.match(JFC_DATA_CHECKED_AT, /^\d{4}-\d{2}-\d{2}$/);
+    assert.equal(jfcSurveyLabel(JFC_INDUSTRIES[0]), '2024年度調査');
+    assert.equal(jfcYearsSummary(), '建設業・製造業は2024年度調査（2025年8月公表）、ほかの業種は2025年度調査（2026年8月公表）です');
+    assert.equal(jfcYearsSummary([JFC_INDUSTRIES[2]]), 'すべての業種が2025年度調査（2026年8月公表）です');
+    assert.equal(jfcUpdateDue(new Date(2026, 9, 24)), false);
+    assert.equal(jfcUpdateDue(new Date(2027, 8, 30)), false);
+    assert.equal(jfcUpdateDue(new Date(2027, 9, 1)), true);
+    assert.match(guideFor('equityRatio', ev({ criterion: 'jfc', jfcIndustry: 'services' })).source, /2025年度調査/);
   });
   test('標準のしきい値', () => {
     const r = ruleFor('currentRatio', ev());
@@ -157,7 +173,7 @@ describe('評価バッジ：判定', () => {
 describe('評価バッジ：表示と設定', () => {
   test('現在の基準名', () => {
     assert.equal(criterionLabel(ev()), '標準');
-    assert.equal(criterionLabel(ev({ criterion: 'jfc', jfcIndustry: 'manufacturing' })), '公庫・製造業（2024年度）');
+    assert.equal(criterionLabel(ev({ criterion: 'jfc', jfcIndustry: 'manufacturing' })), '公庫・製造業（2024年度調査）');
     assert.equal(criterionLabel(ev({ criterion: 'tkc' })), 'TKC・業種未入力（自分で入力）');
     const e = setOverride(ev({ criterion: 'furutado' }), 'equityRatio', { good: 50, caution: 30 });
     assert.equal(criterionLabel(e), '古田土会計（一部変更）');
@@ -183,7 +199,7 @@ describe('評価バッジ：表示と設定', () => {
     assert.match(j.notes[0], /黒字かつ自己資本プラス企業平均 24.5% ／ 中央値 -3.8%/);
   });
   test('レポートの注記に基準と出典が入る。オフなら空', () => {
-    assert.match(reportNote(ev({ criterion: 'jfc', jfcIndustry: 'construction' })), /公庫・建設業（2024年度）.*小企業の経営指標調査.*6,838社/);
+    assert.match(reportNote(ev({ criterion: 'jfc', jfcIndustry: 'construction' })), /公庫・建設業（2024年度調査）.*小企業の経営指標調査.*6,838社/);
     assert.equal(reportNote(ev({ enabled: false })), '');
   });
   test('normalizeEvaluation は不正な値を既定に戻し、TKCの業種名・値を残す', () => {

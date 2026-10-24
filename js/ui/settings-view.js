@@ -1,6 +1,6 @@
 // 設定タブ
 import {
-  BADGE_TARGETS, CRITERIA, JFC_INDUSTRIES, TKC_TARGETS, criterionLabel, guideFor, isModified, resetOverrides, ruleFor, setBadgeDisabled, setCriterion, setOverride, setTkcValue,
+  BADGE_TARGETS, CRITERIA, JFC_DATA_CHECKED_AT, JFC_INDUSTRIES, jfcSurveyLabel, jfcUpdateDue, jfcYearsSummary, TKC_TARGETS, criterionLabel, guideFor, isModified, resetOverrides, ruleFor, setBadgeDisabled, setCriterion, setOverride, setTkcValue,
 } from '../badges.js';
 import { ADJUSTMENT_CATEGORIES, CATEGORIES, INDICATORS, formulaText, isNum, parseAmount } from '../calc.js';
 import { CHANGELOG } from '../changelog.js';
@@ -399,6 +399,13 @@ export function saveEvaluation(next) {
   changeSettings(updateSettings(state.data, { evaluation: next }));
 }
 
+const JFC_UPDATE_NOTICE = '最新の公表から1年以上たっています。公庫から新しい調査が公表されている可能性があり、値が異なる場合があります。';
+
+function formatIsoDate(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return `${y}年${m}月${d}日`;
+}
+
 export function criterionDetails(c) {
   const lines = [el('p', { text: c.summary }), el('p', { className: 'note', text: `出典：${c.source}` })];
   if (c.id === 'standard') {
@@ -408,7 +415,8 @@ export function criterionDetails(c) {
     lines.push(el('p', { className: 'note', text: '自己資本比率・ROA・流動比率・当座比率・総資産回転率を古田土会計の目安に置き換え、それ以外の指標と、示されていない側の境界は標準の値を使います。指標ごとの目安で、どれが標準から引き継いだ値か確認できます。' }));
   }
   if (c.id === 'jfc') {
-    lines.push(el('p', { className: 'note', text: '小企業（原則従業者20人未満）を対象とした調査の「業種全体」の表を使います。建設業・製造業は2024年度調査（2025年8月公表）、ほかの業種は2025年度調査（2026年8月公表）です。調査の対象は9指標（売上総利益率・営業利益率・経常利益率・ROA・総資産回転率・流動比率・当座比率・固定長期適合率・自己資本比率）で、それ以外の指標は標準で評価します。規模の大きい会社では参考程度にしてください。' }));
+    lines.push(el('p', { className: 'note', text: `小企業（原則従業者20人未満）を対象とした調査の「業種全体」の表を使います。${jfcYearsSummary()}（${formatIsoDate(JFC_DATA_CHECKED_AT)}に公庫ウェブサイトで確認）。調査の対象は9指標（売上総利益率・営業利益率・経常利益率・ROA・総資産回転率・流動比率・当座比率・固定長期適合率・自己資本比率）で、それ以外の指標は標準で評価します。規模の大きい会社では参考程度にしてください。` }));
+    if (jfcUpdateDue()) lines.push(el('p', { className: 'warning', text: JFC_UPDATE_NOTICE }));
     const ul = el('ul', { className: 'note source-list' });
     for (const x of JFC_INDUSTRIES) ul.append(el('li', { text: `${x.name}：${x.year}調査・${x.count.toLocaleString('ja-JP')}社（うち黒字かつ自己資本プラス${x.goodCount.toLocaleString('ja-JP')}社）・公庫ウェブサイト ${x.file}` }));
     lines.push(ul);
@@ -437,12 +445,17 @@ export function renderEvaluationPage(panel) {
   if (ev.criterion === 'jfc') {
     const select = el('select', { id: 'jfcIndustry', 'aria-label': '業種' });
     for (const x of JFC_INDUSTRIES) {
-      const o = el('option', { value: x.id, text: `${x.name}（${x.year}）` });
+      const o = el('option', { value: x.id, text: `${x.name}（${jfcSurveyLabel(x)}）` });
       if (x.id === ev.jfcIndustry) o.selected = true;
       select.append(o);
     }
     select.addEventListener('change', () => saveEvaluation({ ...ev, jfcIndustry: select.value }));
-    panel.append(el('label', { className: 'field', for: 'jfcIndustry' }, [el('span', { className: 'field-label', text: '業種（公庫）' }), select]));
+    const ind = JFC_INDUSTRIES.find((x) => x.id === ev.jfcIndustry) ?? JFC_INDUSTRIES[1];
+    panel.append(
+      el('label', { className: 'field', for: 'jfcIndustry' }, [el('span', { className: 'field-label', text: '業種（公庫）' }), select]),
+      el('p', { className: 'note', id: 'jfcSurvey', text: `使用データ：日本政策金融公庫「小企業の経営指標調査」${jfcSurveyLabel(ind)}・${ind.name}（${ind.count.toLocaleString('ja-JP')}社）。${formatIsoDate(JFC_DATA_CHECKED_AT)}時点の最新の調査です。` }),
+      ...(jfcUpdateDue() ? [el('p', { className: 'warning', text: JFC_UPDATE_NOTICE })] : []),
+    );
   }
   if (ev.criterion === 'tkc') {
     const input = el('input', { type: 'text', id: 'tkcIndustry', maxlength: '40', autocomplete: 'off', placeholder: '例：金属製品製造業', value: ev.tkc.industry });

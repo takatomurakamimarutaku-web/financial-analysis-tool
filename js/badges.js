@@ -68,52 +68,90 @@ const jfc = (gm, om, ordm, roa, at, cr, qr, flt, er) => ({
 });
 export const JFC_INDUSTRIES = [
   {
-    id: 'construction', name: '建設業', year: '2024年度', count: 6838, goodCount: 2873,
+    id: 'construction', name: '建設業', year: '2024年度', published: '2025-08', count: 6838, goodCount: 2873,
     file: 'sme_findings2_03b.pdf',
     note: '売上総利益率は「完成工事高総利益率」の値です。',
     values: jfc([39.3, 34.2], [4.4, 0.2], [4.8, 0.5], [10.3, 1.0], [2.3, 2.1], [340.8, 187.9], [247.8, 138.3], [50.5, 45.4], [27.0, 2.9]),
   },
   {
-    id: 'manufacturing', name: '製造業', year: '2024年度', count: 2042, goodCount: 624,
+    id: 'manufacturing', name: '製造業', year: '2024年度', published: '2025-08', count: 2042, goodCount: 624,
     file: 'sme_findings2_04b.pdf',
     values: jfc([44.1, 38.5], [4.9, -1.0], [5.7, 0.2], [8.5, 0.3], [1.5, 1.3], [442.5, 193.2], [278.7, 124.7], [53.2, 60.7], [24.5, -3.8]),
   },
   {
-    id: 'infoComm', name: '情報通信業', year: '2025年度', count: 1327, goodCount: 665,
+    id: 'infoComm', name: '情報通信業', year: '2025年度', published: '2026-08', count: 1327, goodCount: 665,
     file: 'sme_findings2_05b.pdf',
     values: jfc([73.8, 83.6], [7.1, 0.7], [7.7, 1.0], [15.9, 2.2], [2.4, 2.2], [339.1, 210.7], [279.6, 176.8], [36.5, 25.5], [33.9, 15.0]),
   },
   {
-    id: 'transport', name: '運輸業', year: '2025年度', count: 1124, goodCount: 375,
+    id: 'transport', name: '運輸業', year: '2025年度', published: '2026-08', count: 1124, goodCount: 375,
     file: 'sme_findings2_06b.pdf',
     values: jfc([54.9, 41.1], [3.9, 0.0], [4.0, 0.4], [9.4, 0.9], [2.4, 2.1], [291.9, 159.1], [242.4, 136.1], [58.3, 63.9], [22.1, -6.0]),
   },
   {
-    id: 'wholesaleRetail', name: '卸売・小売業', year: '2025年度', count: 3584, goodCount: 1503,
+    id: 'wholesaleRetail', name: '卸売・小売業', year: '2025年度', published: '2026-08', count: 3584, goodCount: 1503,
     file: 'sme_findings2_07b.pdf',
     values: jfc([31.9, 31.0], [3.4, 0.3], [3.5, 0.4], [8.6, 0.9], [3.0, 2.3], [565.4, 188.8], [294.7, 105.0], [45.8, 43.9], [24.0, 2.8]),
   },
   {
-    id: 'foodLodging', name: '飲食店・宿泊業', year: '2025年度', count: 850, goodCount: 322,
+    id: 'foodLodging', name: '飲食店・宿泊業', year: '2025年度', published: '2026-08', count: 850, goodCount: 322,
     file: 'sme_findings2_08b.pdf',
     values: jfc([71.6, 68.0], [4.7, -0.1], [5.3, 0.6], [11.6, 1.3], [2.5, 2.3], [279.8, 136.3], [192.6, 88.0], [94.1, 82.7], [29.6, -0.2]),
   },
   {
-    id: 'medical', name: '医療・福祉', year: '2025年度', count: 1858, goodCount: 744,
+    id: 'medical', name: '医療・福祉', year: '2025年度', published: '2026-08', count: 1858, goodCount: 744,
     file: 'sme_findings2_09b.pdf',
     values: jfc([94.6, 99.1], [6.4, 0.3], [7.3, 1.3], [13.5, 2.2], [1.9, 1.9], [488.3, 257.2], [391.0, 193.6], [51.2, 55.5], [27.6, 2.2]),
   },
   {
-    id: 'education', name: '教育・学習支援業', year: '2025年度', count: 380, goodCount: 128,
+    id: 'education', name: '教育・学習支援業', year: '2025年度', published: '2026-08', count: 380, goodCount: 128,
     file: 'sme_findings2_10b.pdf',
     values: jfc([92.1, 97.7], [6.4, 0.3], [6.5, 0.6], [13.5, 1.5], [2.2, 2.3], [301.3, 146.9], [233.3, 108.0], [69.4, 72.9], [29.8, -9.1]),
   },
   {
-    id: 'services', name: 'サービス業', year: '2025年度', count: 4587, goodCount: 2134,
+    id: 'services', name: 'サービス業', year: '2025年度', published: '2026-08', count: 4587, goodCount: 2134,
     file: 'sme_findings2_11b.pdf',
     values: jfc([75.7, 84.3], [7.1, 0.6], [7.7, 1.1], [14.0, 2.0], [2.1, 1.9], [342.4, 190.6], [266.5, 143.9], [52.7, 51.5], [31.7, 8.4]),
   },
 ];
+
+// 公庫データの確認日（公庫ウェブサイトで最新の調査かを確かめた日）。年次更新の手順は README「公庫データの年次更新」
+export const JFC_DATA_CHECKED_AT = '2026-10-24';
+
+export function jfcSurveyLabel(ind) {
+  return `${ind.year}調査`;
+}
+
+function publishedLabel(ym) {
+  const [y, m] = String(ym).split('-').map(Number);
+  return `${y}年${m}月公表`;
+}
+
+// 「建設業・製造業は2024年度調査（2025年8月公表）、ほかの業種は2025年度調査（2026年8月公表）」のような説明
+export function jfcYearsSummary(list = JFC_INDUSTRIES) {
+  const groups = new Map();
+  for (const x of list) {
+    const k = `${x.year}|${x.published}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(x.name);
+  }
+  const parts = [...groups.entries()].map(([k, names]) => {
+    const [year, published] = k.split('|');
+    return { names, text: `${year}調査（${publishedLabel(published)}）` };
+  });
+  if (parts.length === 1) return `すべての業種が${parts[0].text}です`;
+  // いちばん多い組を「ほかの業種」にまとめる
+  const most = parts.reduce((a, b) => (b.names.length > a.names.length ? b : a));
+  const others = parts.filter((p) => p !== most).map((p) => `${p.names.join('・')}は${p.text}`);
+  return `${others.join('、')}、ほかの業種は${most.text}です`;
+}
+
+// 最新の公表から1年以上たち、次の調査が公表されている可能性があるか（毎年8月ごろの公表を想定し、翌年10月以降で true）
+export function jfcUpdateDue(now = new Date(), list = JFC_INDUSTRIES) {
+  const latest = list.map((x) => x.published).sort().at(-1);
+  const [y] = latest.split('-').map(Number);
+  return now.getTime() >= new Date(y + 1, 9, 1).getTime();
+}
 
 export const CRITERIA = [
   {
@@ -261,13 +299,13 @@ export function isModified(evaluation) {
   return c !== 'tkc' && Object.keys(evaluation?.overrides?.[c] ?? {}).length > 0;
 }
 
-// 「評価基準：公庫・製造業（2024年度）」のような現在の基準名
+// 「評価基準：公庫・製造業（2024年度調査）」のような現在の基準名
 export function criterionLabel(evaluation) {
   const c = CRITERIA.find((x) => x.id === evaluation?.criterion) ?? CRITERIA[0];
   let label = c.name;
   if (c.id === 'jfc') {
     const ind = jfcIndustryOf(evaluation);
-    label = `公庫・${ind.name}（${ind.year}）`;
+    label = `公庫・${ind.name}（${jfcSurveyLabel(ind)}）`;
   } else if (c.id === 'tkc') {
     const name = evaluation?.tkc?.industry?.trim();
     label = `TKC・${name || '業種未入力'}（自分で入力）`;
@@ -393,7 +431,7 @@ export function guideFor(id, evaluation) {
   if (rule.modified) source = `${SOURCE_NAMES[evaluation.criterion]}の値を変更`;
   else if (rule.source === 'jfc') {
     const ind = jfcIndustryOf(evaluation);
-    source = `公庫・${ind.name}（${ind.year}）`;
+    source = `公庫・${ind.name}（${jfcSurveyLabel(ind)}）`;
     notes.push(`黒字かつ自己資本プラス企業平均 ${fmtBound(rule.ref.avg, rule.unit)} ／ 中央値 ${fmtBound(rule.ref.median, rule.unit)}`);
     if (rule.ref.avg !== rule.good) notes.push('この業種は平均より中央値の方が良いため、中央値を良好の境界にしています。');
     if (id === 'grossMargin' && ind.note) notes.push(ind.note);
