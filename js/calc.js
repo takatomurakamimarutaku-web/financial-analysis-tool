@@ -380,7 +380,7 @@ export function buildResultText(data, results, warnings = [], periodIndex = 0, o
   const period = data?.periods?.[periodIndex];
   const indicators = opts?.indicators ?? INDICATORS;
   const lines = [];
-  lines.push(`【財務分析結果】${data?.companyName || '（会社名未入力）'} ${period?.label || ''}`.trim());
+  lines.push(`【財務分析結果｜数字のミカタ】${data?.companyName || '（会社名未入力）'} ${period?.label || ''}`.trim());
   lines.push(`（金額単位：${opts?.amountUnit ?? '千円'}、期末残高ベース）`);
   if (warnings.length) {
     lines.push('');

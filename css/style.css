@@ -564,3 +564,6 @@ input[type="text"]:focus { outline: 2px solid var(--primary); outline-offset: -1
 .unit-field { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 9em); gap: 2px 8px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .unit-field-name { font-size: 15px; }
 .unit-field-note { grid-column: 1 / -1; margin: 0; }
+
+.app-sub { font-size: 12px; font-weight: normal; color: var(--muted); margin-left: 4px; }
+.report-app { margin: -4px 0 4px; font-size: 10pt; color: #555; }

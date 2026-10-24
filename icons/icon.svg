@@ -1,20 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <!-- 案C「グラス・バー」：背景は全面塗り（maskable 対応）。図形は中央の安全領域（半径約205px）内に収める -->
+  <!-- 「数字のミカタ」案A：ルーペで棒グラフをのぞく図形。背景は全面塗り（maskable 対応）、図形は中央の安全領域内 -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#0f766e"/>
       <stop offset="1" stop-color="#1e40af"/>
     </linearGradient>
-    <linearGradient id="bar" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0.45"/>
-    </linearGradient>
+    <clipPath id="lens"><circle cx="232" cy="228" r="92"/></clipPath>
   </defs>
   <rect width="512" height="512" fill="url(#bg)"/>
-  <circle cx="256" cy="256" r="150" fill="#ffffff" opacity="0.08"/>
-  <rect x="166" y="276" width="48" height="84" rx="14" fill="url(#bar)"/>
-  <rect x="232" y="228" width="48" height="132" rx="14" fill="url(#bar)"/>
-  <rect x="298" y="172" width="48" height="188" rx="14" fill="url(#bar)"/>
-  <path d="M168 244 Q230 226 254 196 T340 140" fill="none" stroke="#fde68a" stroke-width="10" stroke-linecap="round"/>
-  <circle cx="340" cy="140" r="13" fill="#fde68a"/>
+  <circle cx="232" cy="228" r="92" fill="#ffffff" opacity="0.16"/>
+  <g clip-path="url(#lens)">
+    <rect x="166" y="248" width="34" height="80" rx="9" fill="#ffffff" opacity="0.75"/>
+    <rect x="215" y="214" width="34" height="114" rx="9" fill="#ffffff" opacity="0.88"/>
+    <rect x="264" y="176" width="34" height="152" rx="9" fill="#ffffff"/>
+  </g>
+  <path d="M170 214 Q214 204 236 178 T294 150" fill="none" stroke="#fde68a" stroke-width="9" stroke-linecap="round"/>
+  <circle cx="232" cy="228" r="92" fill="none" stroke="#ffffff" stroke-width="18"/>
+  <line x1="300" y1="296" x2="358" y2="354" stroke="#ffffff" stroke-width="30" stroke-linecap="round"/>
 </svg>

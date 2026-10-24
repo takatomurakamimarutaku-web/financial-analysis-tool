@@ -752,6 +752,7 @@ function renderReport() {
   const now = new Date();
   box.append(
     el('h1', { text: '財務分析レポート' }),
+    el('p', { className: 'report-app', text: '数字のミカタ' }),
     el('p', { className: 'report-meta', text: `会社名：${data.companyName || '（未入力）'}　対象期：${labels.join('、')}　作成日：${formatDateTime(now).slice(0, 10)}　金額単位：${unitName('report')}` }),
   );
 
