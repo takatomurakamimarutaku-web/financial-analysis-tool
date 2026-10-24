@@ -223,7 +223,9 @@ async function shot(page, name) {
       await step('バックアップを保存し、クリア→元に戻す→復元できる', async () => {
         await page.click('#tab-input');
         const before = await page.evaluate(() => localStorage.getItem('finAnalysisTool.data'));
-        const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#btnExport')]);
+        await page.click('#btnExport');
+        await page.waitForSelector('#modal:not([hidden]) input[type=password]');
+        const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#modalActions >> text=パスワードなしで保存')]);
         backupPath = path.join(SHOT_DIR, 'backup.json');
         await dl.saveAs(backupPath);
         assert.equal(JSON.parse(fs.readFileSync(backupPath, 'utf8')).format, 'finAnalysisTool-backup');
@@ -274,11 +276,26 @@ async function shot(page, name) {
         assert.equal((await page.$$('#periodChips .chip:not(.chip-add)')).length, 3);
         await shot(page, 'companies-input');
 
-        const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#btnExportAll')]);
-        const allPath = path.join(SHOT_DIR, 'backup-all.json');
+        // 全社のバックアップはパスワード付きで保存する（短いパスワード・確認の不一致は保存しない）
+        await page.click('#btnExportAll');
+        const pwInputs = page.locator('#modal:not([hidden]) input[type=password]');
+        await pwInputs.nth(0).fill('short');
+        await pwInputs.nth(1).fill('short');
+        await page.click('#modalActions >> text=パスワード付きで保存');
+        assert.match(await page.textContent('#modalBody [role=alert]'), /8文字以上/);
+        await pwInputs.nth(0).fill('mikata-pass-1');
+        await pwInputs.nth(1).fill('mikata-pass-2');
+        await page.click('#modalActions >> text=パスワード付きで保存');
+        assert.match(await page.textContent('#modalBody [role=alert]'), /一致しません/);
+        await shot(page, 'backup-password');
+        await pwInputs.nth(1).fill('mikata-pass-1');
+        const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#modalActions >> text=パスワード付きで保存')]);
+        const allPath = path.join(SHOT_DIR, 'backup-all-locked.json');
         await dl.saveAs(allPath);
-        assert.match(dl.suggestedFilename(), /backup-all/);
-        assert.equal(JSON.parse(fs.readFileSync(allPath, 'utf8')).data.companies.length, 2);
+        assert.match(dl.suggestedFilename(), /backup-all-.*-locked\.json$/);
+        const locked = fs.readFileSync(allPath, 'utf8');
+        assert.equal(JSON.parse(locked).format, 'finAnalysisTool-encrypted-backup');
+        assert.ok(!locked.includes('B商事'), '会社名が平文で残らない');
 
         // 1社分のバックアップを「新しい会社として追加」
         await page.setInputFiles('#importFile', backupPath);
@@ -299,9 +316,17 @@ async function shot(page, name) {
         await page.waitForTimeout(200);
         assert.deepEqual(await companyNames(), ['サンプル株式会社', 'B商事', 'サンプル株式会社']);
 
-        // 全社のバックアップで置き換え
+        // 全社のバックアップ（パスワード付き）で置き換え。違うパスワードでは復元しない
         await page.setInputFiles('#importFile', allPath);
-        await page.waitForTimeout(300);
+        await page.waitForSelector('#modal:not([hidden]) input[type=password]');
+        await page.fill('#modal input[type=password]', 'wrong-password');
+        await page.click('#modalActions >> text=復元へ進む');
+        await page.waitForSelector('#modalBody [role=alert]:not([hidden])');
+        assert.match(await page.textContent('#modalBody [role=alert]'), /パスワードが違うか/);
+        assert.equal((await companyNames()).length, 3);
+        await page.fill('#modal input[type=password]', 'mikata-pass-1');
+        await page.click('#modalActions >> text=復元へ進む');
+        await page.waitForTimeout(1500);
         assert.deepEqual(await companyNames(), ['サンプル株式会社', 'B商事']);
         await page.click('#tab-input');
       });

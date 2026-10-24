@@ -8,6 +8,9 @@ import {
   MAX_COMPANIES, activeData, addCompany, clearUndo, companyLabel, createUndoSnapshot, loadUndo, parseAnyBackup, saveUndo,
   workspaceBackupFileName,
 } from '../workspace.js';
+import {
+  MIN_PASSWORD_LENGTH, checkPassword, decryptBackup, encryptBackup, encryptedFileName, parseEncryptedHeader,
+} from '../secure-backup.js';
 import { renderCompanyBar } from './companies.js';
 import { openModal } from './dialogs.js';
 import { hasAnyInput, update } from './app.js';
@@ -31,16 +34,77 @@ export function downloadFile(file) {
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
-// scope = 'company'（選択中の会社だけ）| 'all'（全社）
-export async function onExport(scope = 'company') {
+const PASSWORD_WARNING = 'パスワードを忘れると、このバックアップは復元できません。パスワードはこの端末にも保存されず、再発行の方法もありません。紙に書くなどして別に保管してください。';
+
+function passwordInput(label, autocomplete) {
+  const input = el('input', { type: 'password', autocomplete, maxlength: '256', spellcheck: 'false', autocapitalize: 'off' });
+  return { input, field: el('label', { className: 'field' }, [el('span', { className: 'field-label', text: label }), input]) };
+}
+
+// scope = 'company'（選択中の会社だけ）| 'all'（全社）。
+// 保存方法（パスワード付き・なし）を選ぶ画面を出し、保存が終わるか、やめたときに完了する。
+// opts.ask = false は保存方法を聞かずに平文で保存する（起動に失敗したときの緊急用）
+export function onExport(scope = 'company', opts = {}) {
   saveNow();
+  if (opts.ask === false) return exportBackup(scope, null);
+  return new Promise((resolve) => {
+    const pw = passwordInput('パスワード', 'new-password');
+    const pw2 = passwordInput('パスワード（確認）', 'new-password');
+    const error = el('p', { className: 'warning', role: 'alert' });
+    error.hidden = true;
+    const what = scope === 'all' ? `全社（${state.workspace.companies.length}社）` : `「${companyLabel(state.data)}」`;
+    let started = false;
+    openModal({
+      title: 'バックアップの保存',
+      body: [
+        el('p', { text: `${what}のバックアップを保存します。パスワードを付けると、ファイルを開いても中身を読めなくなります（AES-GCM で暗号化）。` }),
+        pw.field,
+        pw2.field,
+        el('p', { className: 'note', text: `パスワードは${MIN_PASSWORD_LENGTH}文字以上。` }),
+        el('p', { className: 'warning', text: PASSWORD_WARNING }),
+        error,
+      ],
+      actions: [
+        {
+          label: 'パスワード付きで保存',
+          primary: true,
+          onClick: () => {
+            const msg = checkPassword(pw.input.value, pw2.input.value);
+            if (msg) {
+              error.textContent = msg;
+              error.hidden = false;
+              pw.input.focus();
+              return false;
+            }
+            started = true;
+            exportBackup(scope, pw.input.value).finally(resolve);
+            return true;
+          },
+        },
+        { label: 'パスワードなしで保存', onClick: () => { started = true; exportBackup(scope, null).finally(resolve); } },
+        { label: 'やめる' },
+      ],
+      onClose: () => { if (!started) resolve(); },
+    });
+    pw.input.focus();
+  });
+}
+
+async function exportBackup(scope, password) {
   const now = new Date();
   const all = scope === 'all';
-  const file = new File(
-    [backupToJson(all ? state.workspace : state.data, now)],
-    all ? workspaceBackupFileName(now) : backupFileName(now),
-    { type: 'application/json' },
-  );
+  let text = backupToJson(all ? state.workspace : state.data, now);
+  let name = all ? workspaceBackupFileName(now) : backupFileName(now);
+  if (password) {
+    try {
+      text = await encryptBackup(text, password);
+      name = encryptedFileName(name);
+    } catch {
+      showToast('暗号化できませんでした（バックアップは保存していません）');
+      return;
+    }
+  }
+  const file = new File([text], name, { type: 'application/json' });
   try {
     // iPhone では共有シートから「"ファイル"に保存」できる
     if (!(await saveFile(file))) return; // 共有をキャンセルした
@@ -50,7 +114,8 @@ export async function onExport(scope = 'company') {
   }
   setLastBackupAt(now);
   renderBackupStatus();
-  showToast(all ? `全社（${state.workspace.companies.length}社）のバックアップを作成しました` : `「${companyLabel(state.data)}」のバックアップを作成しました`);
+  const lock = password ? 'パスワード付きの' : '';
+  showToast(all ? `全社（${state.workspace.companies.length}社）の${lock}バックアップを作成しました` : `「${companyLabel(state.data)}」の${lock}バックアップを作成しました`);
 }
 
 export function onImportClick() {
@@ -68,6 +133,55 @@ export async function onImportFile(e) {
     showToast('ファイルを読み込めませんでした');
     return;
   }
+  const head = parseEncryptedHeader(text);
+  if (head.encrypted && !head.ok) {
+    window.alert(`復元できませんでした。\n${head.error}`);
+    return;
+  }
+  if (head.ok) {
+    askPasswordAndRestore(text);
+    return;
+  }
+  restoreFromText(text);
+}
+
+// パスワード付きバックアップ：パスワードを聞いて復号してから復元する
+function askPasswordAndRestore(text, message = '') {
+  const pw = passwordInput('パスワード', 'current-password');
+  const error = el('p', { className: 'warning', role: 'alert', text: message });
+  error.hidden = !message;
+  openModal({
+    title: 'パスワード付きのバックアップ',
+    body: [
+      el('p', { text: 'バックアップを作成したときのパスワードを入力してください。' }),
+      pw.field,
+      error,
+    ],
+    actions: [
+      {
+        label: '復元へ進む',
+        primary: true,
+        onClick: () => {
+          if (!pw.input.value) {
+            error.textContent = 'パスワードを入力してください';
+            error.hidden = false;
+            pw.input.focus();
+            return false;
+          }
+          decryptBackup(text, pw.input.value).then((res) => {
+            if (!res.ok) askPasswordAndRestore(text, res.error);
+            else restoreFromText(res.text);
+          });
+          return true;
+        },
+      },
+      { label: 'やめる' },
+    ],
+  });
+  pw.input.focus();
+}
+
+function restoreFromText(text) {
   const result = parseAnyBackup(text);
   if (!result.ok) {
     window.alert(`復元できませんでした。\n${result.error}`);

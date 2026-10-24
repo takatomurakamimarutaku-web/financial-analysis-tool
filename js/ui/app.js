@@ -69,7 +69,7 @@ export function hasAnyInput() {
 }
 
 export function init() {
-  window.__fatalBackup = () => { onExport('all').catch(() => window.__saveRawBackup?.()); };
+  window.__fatalBackup = () => { onExport('all', { ask: false }).catch(() => window.__saveRawBackup?.()); };
   const { workspace, error } = loadWorkspace();
   setWorkspace(workspace);
   state.storageError = error;
