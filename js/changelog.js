@@ -1,0 +1,40 @@
+// 更新履歴。新しいバージョンを先頭に追加する（version は js/pwa.js の APP_VERSION と同じ表記）。
+// DOM に依存しない純粋関数と定数。
+export const CHANGELOG = [
+  {
+    version: 'v16', date: '2026-10-24',
+    items: [
+      '更新履歴を追加しました（設定 →「このアプリについて」、更新後の最初の起動時にも表示）。',
+    ],
+  },
+  {
+    version: 'v15', date: '2026-10-24',
+    items: [
+      '初めて使う方向けの使い方ガイドを追加しました。',
+      '指標ごとの「?」ヘルプと「指標の解説（計算式一覧）」を追加しました。',
+      'クリア・期の削除・復元などを「元に戻す」できるようにしました。',
+      '免責事項・プライバシー・ライセンスを表示するようにしました。',
+      '予期しないエラーや保存できないときに、画面上部でお知らせするようにしました。',
+    ],
+  },
+  {
+    version: 'v14', date: '2026-10-24',
+    items: ['評価バッジ（良好・注意）を追加しました。標準・古田土会計・日本政策金融公庫・TKC（自分で入力）から基準を選べます。'],
+  },
+  {
+    version: 'v13', date: '2026-10-24',
+    items: ['更新したときに新しい画面が表示されないことがある不具合を直しました。'],
+  },
+];
+
+export const LAST_VERSION_KEY = 'finAnalysisTool.lastVersion';
+
+// 前回起動したバージョン（prev）から current までに追加された履歴（新しい順）。
+// prev がない（初めての起動）・同じ・履歴にない場合は空配列。
+export function changesSince(prev, current, log = CHANGELOG) {
+  if (!prev || prev === current) return [];
+  const end = log.findIndex((e) => e.version === prev);
+  const start = log.findIndex((e) => e.version === current);
+  if (start < 0) return [];
+  return log.slice(start, end < 0 ? start + 1 : end);
+}

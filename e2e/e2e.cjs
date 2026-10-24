@@ -203,6 +203,19 @@ async function shot(page, name) {
       });
     }
 
+    if (scheme === 'dark') {
+      await step('更新後の最初の起動で変更点を表示する', async () => {
+        await page.evaluate(() => localStorage.setItem('finAnalysisTool.lastVersion', 'v13'));
+        await page.reload();
+        await page.waitForSelector('#modal:not([hidden])');
+        assert.match(await page.textContent('#modalTitle'), /に更新しました/);
+        assert.match(await page.textContent('#modalBody'), /v14/);
+        await page.click('#modalActions >> text=閉じる');
+        await page.reload();
+        assert.ok(await page.isHidden('#modal'), '2回目は出さない');
+      });
+    }
+
     await step(`画面のエラーが出ていない${S}`, async () => {
       const errs = page.errors.filter((m) => !/QuotaExceededError/.test(m));
       assert.deepEqual(errs, []);

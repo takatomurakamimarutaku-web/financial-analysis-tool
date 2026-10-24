@@ -20,6 +20,7 @@ import {
   DISCLAIMER, PRIVACY, REPORT_DISCLAIMER, COPYRIGHT, LICENSE_TEXT, CONTACT, ONBOARDING_STEPS, ONBOARDING_KEY, NA_RULES,
   indicatorHelp, hasHelp, helpCatalog,
 } from './help.js';
+import { CHANGELOG, LAST_VERSION_KEY, changesSince } from './changelog.js';
 import { buildLineChartSvg } from './chart.js';
 import {
   plSteps, ebitdaSteps, netDebtSteps, buildWaterfallSvg, bsBoxes, buildBsBoxSvg, cccParts, buildCccSvg,
@@ -213,6 +214,30 @@ function openHelp(id) {
       { label: '閉じる', primary: true },
     ],
   });
+}
+
+function changelogList(entries) {
+  return el('div', { className: 'changelog' }, entries.map((e) => el('section', { className: 'changelog-entry' }, [
+    el('p', { className: 'changelog-head', text: `${e.version}（${e.date}）` }),
+    el('ul', {}, e.items.map((t) => el('li', { text: t }))),
+  ])));
+}
+
+// 更新後の最初の起動で、前回のバージョンからの変更点を表示する。初めての起動では記録だけする
+function showChangesIfUpdated() {
+  let prev = null;
+  try {
+    prev = localStorage.getItem(LAST_VERSION_KEY);
+    localStorage.setItem(LAST_VERSION_KEY, APP_VERSION);
+  } catch {
+    return false;
+  }
+  // 更新履歴の記録を始める前から使っている人（データあり・記録なし）には最新分を出す
+  if (prev === null && hasAnyData(state.data)) prev = 'unknown';
+  const changes = changesSince(prev, APP_VERSION);
+  if (!changes.length) return false;
+  openModal({ title: `${APP_VERSION} に更新しました`, body: [changelogList(changes)] });
+  return true;
 }
 
 function readOnboarded() {
@@ -1690,6 +1715,8 @@ function renderAboutPage(panel) {
       el('dt', { text: '保存データの保護' }), persisted,
     ]),
     el('div', { className: 'actions' }, [check, guide]),
+    el('h3', { className: 'sub-title', text: '更新履歴' }),
+    changelogList(CHANGELOG),
     el('h3', { className: 'sub-title', text: 'ご利用にあたって（免責事項）' }),
     el('ul', { className: 'legal-list' }, DISCLAIMER.map((t) => el('li', { text: t }))),
     el('h3', { className: 'sub-title', text: 'プライバシー' }),
@@ -2148,7 +2175,10 @@ function init() {
   window.addEventListener('pagehide', () => { if (saveTimer) saveNow(); });
 
   // 初めて使う人（データなし・ガイド未表示）には使い方ガイドを出す
-  if (!readOnboarded() && !hasAnyData(state.data)) openOnboarding(0);
+  if (!readOnboarded() && !hasAnyData(state.data)) {
+    openOnboarding(0);
+    try { localStorage.setItem(LAST_VERSION_KEY, APP_VERSION); } catch { /* 記録できなくても使える */ }
+  } else showChangesIfUpdated();
 }
 
 init();

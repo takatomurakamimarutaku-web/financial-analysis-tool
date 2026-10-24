@@ -255,6 +255,7 @@
 | js/csv.js | CSV 生成（エスケープ・BOM。DOM に依存しない純粋関数） |
 | js/diagrams.js | 図解タブの図（滝グラフ・BSの面積図・CCCの帯グラフ）の SVG 生成（DOM に依存しない純粋関数） |
 | js/badges.js | 評価バッジの基準セット（標準・古田土会計・公庫・TKC）と判定（DOM に依存しない純粋関数） |
+| js/changelog.js | 更新履歴と、前回のバージョンからの変更点の抽出（純粋関数） |
 | js/help.js | 免責事項・プライバシー・ライセンスの文言、初回ガイド、指標のヘルプ（DOM に依存しない純粋関数） |
 | js/settings.js | 設定（表示単位・科目・指標・桁数など）の既定値・正規化・変更・内訳科目の合計計算（DOM に依存しない純粋関数） |
 | js/ui.js | 画面描画・イベント処理 |
@@ -353,6 +354,7 @@ node e2e/e2e.cjs [スクリーンショットの保存先]
 2. 新しいファイルを追加した場合は、`sw.js` の `ASSETS` に追加する
 3. `sw.js` の `CACHE_VERSION` を 1 つ上げる（例：`'v1'` → `'v2'`。キャッシュ名は `fin-tool-v2` になる）
    - 同時に `js/pwa.js` の `APP_VERSION` も同じ値にする（設定 → このアプリについてに表示。check-pwa で一致を確認）
+   - 利用者に知らせたい変更があれば `js/changelog.js` の `CHANGELOG` の先頭に追加する（テストで先頭が `APP_VERSION` と一致することを確認）。更新後の最初の起動時に、前回のバージョンからの変更点を表示する（前回のバージョンは localStorage の `finAnalysisTool.lastVersion`）
 4. `node --test` と `node scripts/check-pwa.js` がすべて通ることを確認する
 5. コミットして GitHub に push する（GitHub Pages に数分で反映）
 6. 利用者が次にアプリを開くと「新しいバージョンがあります［更新］」が表示され、［更新］で切り替わる。古いキャッシュはこのとき削除される
