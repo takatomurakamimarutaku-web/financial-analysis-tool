@@ -21,6 +21,10 @@
       var t = localStorage.getItem('finAnalysisTool.theme');
       if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
     } catch (e) { /* 保存領域が使えない環境では端末の設定に従う */ }
+    // パスコードロックが設定されていれば、描画前に画面を隠す（解除は js/ui/lock.js）
+    try {
+      if (localStorage.getItem('finAnalysisTool.lock')) document.documentElement.classList.add('app-locked');
+    } catch (e) { /* 保存領域が使えない環境ではロックしない */ }
   </script>
   <script>
     // 想定外のエラーの案内。js/ui.js が読み込めない場合でも動くよう、ここに単独で置く。
@@ -62,6 +66,17 @@
   </script>
 </head>
 <body>
+  <div id="lockScreen" class="lock-screen" role="dialog" aria-modal="true" aria-labelledby="lockTitle">
+    <form id="lockForm" class="lock-card" autocomplete="off">
+      <img src="icons/icon.svg" alt="" class="app-logo" width="48" height="48">
+      <h2 id="lockTitle" class="lock-title">パスコードを入力</h2>
+      <input type="password" id="lockInput" inputmode="numeric" pattern="[0-9]*" maxlength="12" aria-label="パスコード" autocomplete="off">
+      <p id="lockError" class="lock-error" role="alert"></p>
+      <div class="actions"><button type="submit" id="lockSubmit" class="btn btn-primary">解除</button></div>
+      <button type="button" id="lockForgot" class="lock-forgot">パスコードを忘れた場合</button>
+      <p class="note">画面をのぞかれないためのロックです。保存データは暗号化されていません。</p>
+    </form>
+  </div>
   <div id="errorBar" class="error-bar" role="alert" hidden>
     <p class="error-bar-title">予期しないエラーが発生しました</p>
     <p class="error-bar-text">入力したデータは端末内に残っています。念のためバックアップを保存してから、再読み込みしてください。</p>

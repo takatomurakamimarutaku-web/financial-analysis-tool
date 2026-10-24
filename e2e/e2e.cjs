@@ -413,6 +413,48 @@ async function shot(page, name) {
         await shot(p2, 'fatal-error');
         await p2.context().close();
       });
+
+      await step('パスコードロック：設定すると起動時に画面を隠し、正しいパスコードで解除・オフにできる', async () => {
+        const p3 = await newPage(browser, base, 'light');
+        await p3.evaluate(() => localStorage.setItem('finAnalysisTool.onboarded', 'x'));
+        await p3.reload();
+        assert.ok(await p3.isHidden('#lockScreen'), 'ロックなしでは表示しない');
+        await p3.click('#tab-settings');
+        await p3.click('.settings-item >> text=パスコードロック');
+        await p3.fill('#lockNew', '12');
+        await p3.fill('#lockNew2', '12');
+        await p3.click('#settingsBody >> text=ロックを設定');
+        assert.match(await p3.textContent('#settingsBody [role=alert]'), /4〜12桁/);
+        await p3.fill('#lockNew', '2580');
+        await p3.fill('#lockNew2', '2580');
+        await p3.click('#settingsBody >> text=ロックを設定');
+        await p3.waitForSelector('#settingsBody >> text=状態：オン');
+        const stored = await p3.evaluate(() => localStorage.getItem('finAnalysisTool.lock'));
+        assert.ok(stored && !stored.includes('2580'), 'パスコードそのものは保存しない');
+        await p3.reload();
+        assert.ok(await p3.isVisible('#lockScreen'), '起動時にロック画面');
+        assert.equal(await p3.evaluate(() => getComputedStyle(document.querySelector('.app-main')).visibility), 'hidden', 'アプリの画面は隠れている');
+        await p3.fill('#lockInput', '0000');
+        await p3.click('#lockSubmit');
+        await p3.waitForFunction(() => document.getElementById('lockError').textContent.includes('違います'));
+        await shot(p3, 'lock-screen');
+        await p3.fill('#lockInput', '2580');
+        await p3.click('#lockSubmit');
+        await p3.waitForSelector('#lockScreen', { state: 'hidden' });
+        assert.equal(await p3.evaluate(() => getComputedStyle(document.querySelector('.app-main')).visibility), 'visible');
+        await p3.click('#tab-settings');
+        if (await p3.isVisible('.settings-back')) await p3.click('.settings-back');
+        await p3.click('.settings-item >> text=パスコードロック');
+        await p3.fill('#lockCurrent', '1111');
+        await p3.click('#settingsBody >> text=ロックをオフにする');
+        await p3.waitForFunction(() => /違います/.test(document.querySelector('#settingsBody [role=alert]').textContent));
+        await p3.fill('#lockCurrent', '2580');
+        await p3.click('#settingsBody >> text=ロックをオフにする');
+        await p3.waitForSelector('#settingsBody >> text=状態：オフ');
+        assert.equal(await p3.evaluate(() => localStorage.getItem('finAnalysisTool.lock')), null);
+        assert.deepEqual(p3.errors, []);
+        await p3.context().close();
+      });
     }
 
     if (scheme === 'dark') {

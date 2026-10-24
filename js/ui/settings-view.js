@@ -13,6 +13,8 @@ import { getLastBackupAt } from '../store.js';
 import { loadUndo } from '../workspace.js';
 import { update } from './app.js';
 import { onExport, onImportClick, onUndo } from './backup.js';
+import { loadLock } from '../lock.js';
+import { renderLockPage } from './lock.js';
 import { renderCompaniesPage } from './companies.js';
 import { $, days, el, evaluation, formatDateTime, fv, settings, showToast, state } from './core.js';
 import { changelogList, helpBody, openOnboarding } from './dialogs.js';
@@ -33,6 +35,7 @@ export const SETTINGS_PAGES = [
   { id: 'display', title: '画面の表示', summary: () => `テーマ：${THEMES.find((t) => t.id === settings().theme).name}・マイナス：${settings().negativeStyle === 'triangle' ? '△' : '−'}` },
   { id: 'digits', title: '表示桁数', summary: () => `%：${settings().digits.pct}桁・日：${settings().digits.days}桁・倍/回：${settings().digits.times}桁` },
   { id: 'categories', title: '正常化EBITDAの調整区分', summary: () => `${Object.keys(settings().adjustmentCategoryNames).length}件を名称変更` },
+  { id: 'lock', title: 'パスコードロック', summary: () => (loadLock().record ? 'オン' : 'オフ') },
   { id: 'data', title: 'バックアップ・データ管理', summary: () => (settings().backupReminderDays ? `${settings().backupReminderDays}日ごとに案内` : 'バックアップの案内なし') },
   { id: 'about', title: 'このアプリについて', summary: () => `バージョン ${APP_VERSION}` },
 ];
@@ -519,6 +522,7 @@ export function renderGlossaryPage(panel) {
 }
 
 export const SETTINGS_RENDERERS = {
+  lock: (panel) => renderLockPage(panel, renderSettings),
   companies: renderCompaniesPage,
   glossary: renderGlossaryPage,
   evaluation: renderEvaluationPage,

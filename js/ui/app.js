@@ -18,6 +18,7 @@ import {
 } from './input.js';
 import { renderSectionNav, updateNavHeight } from './nav.js';
 import { initKeyboardNavigation } from './a11y.js';
+import { initLock } from './lock.js';
 import { renderCashFlowInput } from './cashflow.js';
 import { LINE_LISTS, onAddLineItem, renderNetDebtSummary } from './netdebt.js';
 import { exportCsv, onDeleteAll, renderReport, renderReportOptions } from './report.js';
@@ -69,6 +70,7 @@ export function hasAnyInput() {
 }
 
 export function init() {
+  initLock();
   window.__fatalBackup = () => { onExport('all', { ask: false }).catch(() => window.__saveRawBackup?.()); };
   const { workspace, error } = loadWorkspace();
   setWorkspace(workspace);

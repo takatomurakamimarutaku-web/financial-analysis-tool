@@ -109,7 +109,8 @@ body {
 .field { display: block; min-width: 0; }
 .field-label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 2px; }
 
-input[type="text"] {
+input[type="text"],
+input[type="password"] {
   width: 100%;
   font-size: 16px; /* 16px未満だとiOSで入力時に自動ズームする */
   padding: 8px 10px;
@@ -119,7 +120,8 @@ input[type="text"] {
   color: var(--text);
   min-width: 0;
 }
-input[type="text"]:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+input[type="text"]:focus,
+input[type="password"]:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
 
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 
@@ -670,8 +672,8 @@ body {
   font-feature-settings: "palt" 0;
 }
 input, select, textarea, button { font-family: inherit; }
-input[type="text"] { border-radius: var(--radius); font-variant-numeric: tabular-nums; }
-input[type="text"]:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent); }
+input[type="text"], input[type="password"] { border-radius: var(--radius); font-variant-numeric: tabular-nums; }
+input[type="text"]:focus, input[type="password"]:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent); }
 input[type="text"][aria-invalid="true"] { border-color: var(--danger); }
 
 /* ヘッダー：濃紺のアプリバー */
@@ -1119,3 +1121,37 @@ body.reporting .company-bar { display: none; }
 .badge-good::before, .report-badge.badge-good::before { content: '✓ '; }
 .badge-caution::before, .report-badge.badge-caution::before { content: '! '; font-weight: 700; }
 :where(button, a, input, select, textarea, summary, [tabindex]):focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* ---- パスコードロック（覆い見対策） ---- */
+.lock-screen { display: none; }
+.app-locked body > :not(#lockScreen) { visibility: hidden !important; }
+.app-locked body { overflow: hidden; }
+.app-locked .lock-screen {
+  display: flex;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  padding-top: max(16px, env(safe-area-inset-top));
+  background: var(--bg);
+  visibility: visible;
+}
+.lock-card {
+  width: 100%;
+  max-width: 360px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 16px;
+  text-align: center;
+}
+.lock-card .app-logo { width: 48px; height: 48px; }
+.lock-title { font-size: 18px; margin: 8px 0 12px; }
+.lock-card input { text-align: center; letter-spacing: .3em; font-size: 20px; }
+.lock-card .actions { justify-content: center; }
+.lock-card .btn-primary { min-width: 140px; }
+.lock-error { color: var(--danger); min-height: 1.6em; margin: 8px 0 0; font-size: 14px; }
+.lock-card .note { text-align: left; }
+.lock-forgot { background: none; border: 0; color: var(--primary); text-decoration: underline; font-size: 13px; margin-top: 12px; cursor: pointer; padding: 8px; }
