@@ -4,7 +4,7 @@ import {
 } from '../badges.js';
 import { ADJUSTMENT_CATEGORIES, CATEGORIES, INDICATORS, formulaText, isNum, parseAmount } from '../calc.js';
 import { CHANGELOG } from '../changelog.js';
-import { CONTACT, COPYRIGHT, DISCLAIMER, LICENSE_TEXT, NA_RULES, PRIVACY, helpCatalog } from '../help.js';
+import { COPYRIGHT, DISCLAIMER, LICENSE_TEXT, NA_RULES, PRIVACY, contactText, helpCatalog } from '../help.js';
 import { APP_VERSION, checkForUpdate, isStoragePersisted } from '../pwa.js';
 import {
   AMOUNT_UNITS, BACKUP_REMINDER_CHOICES, DIGIT_LIMITS, MAX_CUSTOM_ACCOUNTS, NEGATIVE_STYLES, OTHER_DETAIL_LABEL, THEMES, UNIT_SCOPES, accountTree, addCustomAccount, commonUnit, createDefaultSettings, indicatorList, moveAccount, moveIndicator, removeCustomAccount, renameAccount, renameCategory, setAccountHidden, setIndicatorHidden, setUnit, unitOf, updateSettings,
@@ -375,8 +375,8 @@ export function renderAboutPage(panel) {
     el('h3', { className: 'sub-title', text: '著作権・ライセンス' }),
     el('p', { className: 'note', text: COPYRIGHT }),
     el('ul', { className: 'legal-list' }, LICENSE_TEXT.map((t) => el('li', { text: t }))),
-    el('h3', { className: 'sub-title', text: 'お問い合わせ' }),
-    el('p', { className: 'note', text: CONTACT ?? '準備中です。' }),
+    // 問い合わせ先が未定の間は欄ごと出さない
+    ...(contactText() ? [el('h3', { className: 'sub-title', text: 'お問い合わせ' }), el('p', { className: 'note', text: contactText() })] : []),
   );
 }
 

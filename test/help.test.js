@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DISCLAIMER, PRIVACY, REPORT_DISCLAIMER, ONBOARDING_STEPS, COPYRIGHT, CONTACT,
+  DISCLAIMER, PRIVACY, REPORT_DISCLAIMER, ONBOARDING_STEPS, COPYRIGHT, CONTACT, contactText,
   indicatorHelp, hasHelp, helpCatalog,
 } from '../js/help.js';
 import { INDICATORS, buildComparison } from '../js/calc.js';
@@ -15,7 +15,11 @@ describe('免責・プライバシー・ガイドの文言', () => {
     assert.match(PRIVACY.join(), /外部のサーバーへの送信.*一切ありません/);
     assert.match(REPORT_DISCLAIMER, /参考値.*助言/);
     assert.match(COPYRIGHT, /All rights reserved/);
-    assert.equal(CONTACT, null); // 問い合わせ先は未定
+    assert.equal(CONTACT, null); // 問い合わせ先は未定（「このアプリについて」に欄を出さない）
+    assert.equal(contactText(), null);
+    assert.equal(contactText(''), null);
+    assert.equal(contactText('  '), null);
+    assert.equal(contactText(' support@example.com '), 'support@example.com');
   });
   test('初回ガイドは3画面で、サンプル導線とホーム画面追加の手順がある', () => {
     assert.equal(ONBOARDING_STEPS.length, 3);

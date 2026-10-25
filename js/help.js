@@ -21,8 +21,13 @@ export const LICENSE_TEXT = [
   'アプリの利用は無料です。',
   'ソースコード・デザイン・アイコン・文書の複製・改変・再配布・転載は、著作権者の許可なく行えません。',
 ];
-// 問い合わせ先（未定の間は null。決まったら文字列を入れると「このアプリについて」に表示される）
+// 問い合わせ先（未定の間は null。決まったら文字列を入れると「このアプリについて」に「お問い合わせ」の欄が出る）
 export const CONTACT = null;
+
+// 表示する問い合わせ先。未定（null・空文字）なら null で、欄ごと表示しない
+export function contactText(contact = CONTACT) {
+  return typeof contact === 'string' && contact.trim() ? contact.trim() : null;
+}
 
 // レポートの注記に入れる1行
 export const REPORT_DISCLAIMER = '本レポートは入力データにもとづく参考値であり、税務・会計・投資・融資の判断についての助言、監査・保証や財務デューデリジェンスの結論ではありません。データは作成した端末内でのみ処理しています。';
