@@ -984,7 +984,7 @@ body.reporting .company-bar { display: none; }
 .csv-import { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 10px 0 4px; }
 .csv-import .note { margin: 0; font-size: 12px; }
 .csv-unit { margin: 4px 0 10px; }
-.csv-unit select, .csv-map select {
+.csv-unit select, .csv-map select, .csv-col select {
   width: 100%;
   font-size: 16px;
   padding: 6px 8px;
@@ -1155,3 +1155,12 @@ body.reporting .company-bar { display: none; }
 .lock-error { color: var(--danger); min-height: 1.6em; margin: 8px 0 0; font-size: 14px; }
 .lock-card .note { text-align: left; }
 .lock-forgot { background: none; border: 0; color: var(--primary); text-decoration: underline; font-size: 13px; margin-top: 12px; cursor: pointer; padding: 8px; }
+
+/* CSV取込：会計ソフト・列の割り当て */
+.csv-preset { margin: 4px 0 8px; }
+.csv-col { margin: 6px 0; }
+.csv-howto { margin: 6px 0; font-size: 13px; }
+.csv-howto ol { margin: 6px 0 0; padding-left: 1.4em; }
+.csv-columns { margin: 4px 0 10px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
+.csv-columns summary { cursor: pointer; font-size: 14px; }
+.csv-unverified { margin: 4px 0 0; }

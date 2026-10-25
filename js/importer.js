@@ -2,6 +2,7 @@
 // 1行に「科目名」と「金額」があるCSVを読み、科目を入力項目に対応付けて、選択中の期に入れる。
 // 対応表（科目名 → 入力項目）はワークスペースに保存して次回以降に再利用する。
 import { PL_FIELDS, BS_FIELDS, parseAmount, isNum } from './calc.js';
+import { COLUMN_ALIASES, presetById } from './import-presets.js';
 
 export const IGNORE = 'ignore';
 export const MAX_IMPORT_ROWS = 2000;
@@ -32,7 +33,7 @@ const SYNONYMS = [
   { target: 'pl.depreciation', totals: ['減価償却費合計'], parts: ['減価償却費'] },
   { target: 'pl.interestExpense', parts: ['支払利息', '支払利息割引料', '支払利息及び割引料', '支払利息・割引料'] },
   {
-    target: 'bs.cash', totals: ['現金及び預金合計', '現金及び預金', '現金および預金', '現金預金', '現預金', '現金・預金'],
+    target: 'bs.cash', totals: ['現金及び預金合計', '現金・預金合計', '現金預金合計', '現金及び預金', '現金および預金', '現金預金', '現預金', '現金・預金'],
     parts: ['現金', '小口現金', '普通預金', '当座預金', '定期預金', '定期積金', '通知預金'],
   },
   { target: 'bs.receivables', totals: ['売上債権', '受取手形及び売掛金'], parts: ['受取手形', '売掛金', '電子記録債権', '完成工事未収入金'] },
@@ -82,17 +83,25 @@ export function suggestTarget(label, importMap = {}) {
   return { target: IGNORE, sign: 1, from: 'none' };
 }
 
-// バイト列を文字列にする。UTF-8 として読めなければ Shift_JIS（会計ソフトの CSV に多い）として読む
-export function decodeCsvBytes(bytes) {
+// バイト列を文字列にする。戻り値：{ text, encoding }。
+// BOM で UTF-8・UTF-16 を判定し、BOM がなければ UTF-8 として読めるか試し、読めなければ Shift_JIS（会計ソフトの CSV に多い）
+export function decodeCsv(bytes) {
+  const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes ?? []);
+  if (b[0] === 0xff && b[1] === 0xfe) return { text: new TextDecoder('utf-16le').decode(b.subarray(2)), encoding: 'UTF-16' };
+  if (b[0] === 0xfe && b[1] === 0xff) return { text: new TextDecoder('utf-16be').decode(b.subarray(2)), encoding: 'UTF-16' };
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes).replace(/^﻿/, '');
+    return { text: new TextDecoder('utf-8', { fatal: true }).decode(b).replace(/^\uFEFF/, ''), encoding: 'UTF-8' };
   } catch {
     try {
-      return new TextDecoder('shift_jis').decode(bytes);
+      return { text: new TextDecoder('shift_jis').decode(b), encoding: 'Shift_JIS' };
     } catch {
-      return new TextDecoder('utf-8').decode(bytes).replace(/^﻿/, '');
+      return { text: new TextDecoder('utf-8').decode(b).replace(/^\uFEFF/, ''), encoding: 'UTF-8' };
     }
   }
+}
+
+export function decodeCsvBytes(bytes) {
+  return decodeCsv(bytes).text;
 }
 
 // CSV（カンマ区切り。1行目にタブがあればタブ区切り：Excelからの貼り付け）を行と列の配列にする。"..." の囲みと "" のエスケープに対応
@@ -168,10 +177,139 @@ export function extractItems(rows) {
   return items;
 }
 
+// ---- 見出し行による列の判定（会計ソフトの試算表 CSV） ----
+
+// 見出しの名前をそろえる：全角を半角に、空白と単位のかっこ書き（(円)・（千円）など）を除く
+export function normalizeHeader(name) {
+  if (typeof name !== 'string') return '';
+  return name.normalize('NFKC').replace(/[(（[［【][^)）\]］】]*[)）\]］】]/g, '').replace(/[\s　]/g, '');
+}
+
+// 部分一致で調べる順（具体的な名前を先に。「勘定科目コード」は code、「補助科目」は sub、「期首残高」は opening を先に判定）
+const PARTIAL_ORDER = ['ratio', 'code', 'sub', 'debitBalance', 'creditBalance', 'opening', 'closing', 'debit', 'credit', 'label'];
+
+function aliasesOf(preset) {
+  const extra = presetById(preset)?.aliases ?? {};
+  const out = {};
+  for (const role of Object.keys(COLUMN_ALIASES)) out[role] = [...(extra[role] ?? []), ...COLUMN_ALIASES[role]].map(normalizeHeader);
+  return out;
+}
+
+// 見出しの名前の役割。{ role, rank }（rank = 候補の順。小さいほど優先）。わからなければ null
+export function classifyHeader(name, preset = null) {
+  const n = normalizeHeader(name);
+  if (!n) return null;
+  const al = aliasesOf(preset);
+  for (const role of PARTIAL_ORDER) {
+    const i = al[role].indexOf(n);
+    if (i >= 0) return { role, rank: i };
+  }
+  for (const role of PARTIAL_ORDER) {
+    const i = al[role].findIndex((a) => a.length >= 2 && n.includes(a));
+    if (i >= 0) return { role, rank: 100 + i };
+  }
+  return null;
+}
+
+const AMOUNT_ROLES = new Set(['closing', 'debitBalance', 'creditBalance', 'opening', 'debit', 'credit', 'ratio']);
+export const HEADER_SCAN_ROWS = 30;
+
+// 見出し行を探し、列の役割を決める。見つからなければ null。
+// 戻り値：{ headerIndex, names, label, labels, sub, code, amount, debitBalance, creditBalance }（列番号。ないものは null）
+// labels = 科目名として読む列（freee の「階層ごとに分ける」のように分類と科目が別の列のとき、右端の空でない値を使う）
+export function detectColumns(rows, preset = null) {
+  for (let r = 0; r < Math.min(rows.length, HEADER_SCAN_ROWS); r++) {
+    const cells = rows[r] ?? [];
+    const roles = cells.map((c) => classifyHeader(c, preset));
+    const first = (role) => {
+      let best = null;
+      roles.forEach((x, i) => {
+        if (x?.role === role && (best === null || x.rank < roles[best].rank)) best = i;
+      });
+      return best;
+    };
+    const label = first('label');
+    const amount = first('closing');
+    const debitBalance = first('debitBalance');
+    const creditBalance = first('creditBalance');
+    if (label === null || (amount === null && (debitBalance === null || creditBalance === null))) continue;
+    const firstAmount = roles.findIndex((x) => x && AMOUNT_ROLES.has(x.role));
+    const labels = [];
+    for (let i = 0; i < cells.length; i++) {
+      // 科目名の列と、その左の見出しが空・不明の列（分類の階層）。勘定奉行のように科目名が金額の列の間にある形式もある
+      if (i === label || (i < label && i < (firstAmount < 0 ? cells.length : firstAmount) && (roles[i] === null || roles[i].role === 'label'))) labels.push(i);
+    }
+    return {
+      headerIndex: r, names: cells.map((c) => c.trim()), label, labels,
+      sub: first('sub'), code: first('code'), amount, debitBalance, creditBalance,
+    };
+  }
+  return null;
+}
+
+// 列の割り当てに従って行を読む。補助科目の列に値がある行（補助科目の内訳）は、勘定科目の行と二重になるため除く。
+// 借方残高・貸方残高の形式では、両方を item.debit・item.credit に持ち、金額は取込先の貸借の側で決める（buildImport）
+export function extractByColumns(rows, cols) {
+  const items = [];
+  const start = (cols.headerIndex ?? -1) + 1;
+  const labelCols = cols.labels?.length ? cols.labels : [cols.label];
+  const headerLabel = cols.names?.[cols.label] ?? null;
+  rows.slice(start, start + MAX_IMPORT_ROWS).forEach((cells, k) => {
+    if (cols.sub !== null && cols.sub !== undefined && (cells[cols.sub] ?? '').trim() !== '') return;
+    let label = '';
+    for (let j = labelCols.length - 1; j >= 0; j--) {
+      const v = (cells[labelCols[j]] ?? '').trim();
+      if (v && parseCell(v) === null) {
+        label = v;
+        break;
+      }
+    }
+    if (!label || label === headerLabel) return;
+    const line = start + k + 1;
+    if (cols.amount !== null && cols.amount !== undefined) {
+      const amount = parseCell(cells[cols.amount] ?? '');
+      if (amount === null) return;
+      items.push({ line, label, amount });
+      return;
+    }
+    const debit = parseCell(cells[cols.debitBalance] ?? '');
+    const credit = parseCell(cells[cols.creditBalance] ?? '');
+    if (debit === null && credit === null) return;
+    const d = debit ?? 0;
+    const c = credit ?? 0;
+    items.push({ line, label, amount: d !== 0 ? d : c, debit: d, credit: c });
+  });
+  return items;
+}
+
+// 取込先の貸借の側。借方残高・貸方残高の形式で、残高の符号を決めるのに使う
+const CREDIT_TARGETS = new Set([
+  'pl.sales', 'pl.operatingIncome', 'pl.ordinaryIncome', 'pl.netIncome',
+  'bs.payables', 'bs.currentLiabilities', 'bs.fixedLiabilities', 'bs.interestBearingDebt', 'bs.netAssets',
+]);
+export function sideOf(target) {
+  return CREDIT_TARGETS.has(target) ? 'credit' : 'debit';
+}
+
+// 取込の分析。opts.columns（利用者が選んだ列の割り当て）があればそれを使い、なければ見出し行から判定する。
+// 見出し行が見つからなければ、従来の「最初の文字のセル＝科目名、最後の数値のセル＝金額」で読む。
+// 戻り値：{ rows, columns（null = 見出しなし）, detected, items }
+export function analyzeImport(text, importMap = {}, opts = {}) {
+  const rows = parseCsv(text);
+  const detected = detectColumns(rows, opts.preset ?? null);
+  const columns = opts.columns ?? detected;
+  const raw = columns ? extractByColumns(rows, columns) : extractItems(rows);
+  return { rows, columns, detected: Boolean(detected), items: withTargets(raw, importMap) };
+}
+
 // 取込の準備。items に対応の候補を付ける。
+export function prepareImport(text, importMap = {}, opts = {}) {
+  return analyzeImport(text, importMap, opts).items;
+}
+
 // 自動の候補で、同じ項目に合計の科目があれば、優先順の最も高い合計1行だけを残し、ほかの行（内訳・別名の合計）は取り込まないにする
-export function prepareImport(text, importMap = {}) {
-  const items = extractItems(parseCsv(text)).map((it) => ({ ...it, ...suggestTarget(it.label, importMap) }));
+function withTargets(raw, importMap) {
+  const items = raw.map((it) => ({ ...it, ...suggestTarget(it.label, importMap) }));
   const best = new Map(); // target → 残す行の index
   items.forEach((it, i) => {
     if (it.from !== 'auto') return;
@@ -194,7 +332,10 @@ export function buildImport(items, unit = 'yen') {
   for (const it of items) {
     if (!it.target || it.target === IGNORE || !TARGET_IDS.has(it.target)) continue;
     const [section, key] = it.target.split('.');
-    const v = it.amount * (it.sign === -1 ? -1 : 1) * scale;
+    // 借方残高・貸方残高の形式：取込先の側の残高から反対側を引く（符号は貸借で決まるため、損失の科目の反転はしない）
+    const dc = isNum(it.debit) && isNum(it.credit);
+    const base = dc ? (sideOf(it.target) === 'credit' ? it.credit - it.debit : it.debit - it.credit) : it.amount;
+    const v = base * (!dc && it.sign === -1 ? -1 : 1) * scale;
     out[section][key] = (out[section][key] ?? 0) + v;
     out.used++;
   }

@@ -2,7 +2,7 @@
 // いずれも非対応の環境ではなにもせず、エラーで止めない。
 
 // アプリのバージョン表示用。sw.js の CACHE_VERSION と同じ値にする（scripts/check-pwa.js で確認）
-export const APP_VERSION = 'v29';
+export const APP_VERSION = 'v30';
 
 // 新しいバージョンが待機中になったら onUpdateReady(apply) を呼ぶ。
 // apply() を呼ぶと新しいバージョンに切り替えて再読み込みする。

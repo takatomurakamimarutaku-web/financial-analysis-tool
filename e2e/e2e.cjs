@@ -375,6 +375,29 @@ async function shot(page, name) {
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
       });
 
+      await step('会計ソフトの試算表CSV（Shift_JIS・借方残高/貸方残高）：列の自動判定・会計ソフトの選択・列の割り当ての変更', async () => {
+        const csvPath = path.join(__dirname, '..', 'test', 'fixtures', 'dummy-bugyo.csv');
+        await page.setInputFiles('#csvFile', csvPath);
+        await page.waitForSelector('#modal:not([hidden]) .csv-map');
+        assert.match(await page.textContent('.csv-columns summary'), /Shift_JIS/);
+        assert.equal(await page.inputValue('#csvColAmount'), 'dc');
+        assert.equal(await page.locator('.csv-map-row').count(), 6);
+        assert.match(await page.textContent('.csv-preview'), /買掛金|仕入債務/);
+        await page.selectOption('#csvPreset', 'bugyo');
+        assert.match(await page.textContent('.csv-howto'), /合計残高試算表/);
+        assert.match(await page.textContent('#modalBody'), /未検証/);
+        await page.click('.csv-columns summary');
+        await page.selectOption('#csvColAmount', '2'); // 「借方合計」の列に変える
+        assert.match(await page.textContent('.csv-columns'), /列を手動で選択/);
+        assert.match(await page.textContent('.csv-map-row >> nth=0'), /500,000/);
+        await shot(page, 'csv-import-preset');
+        await page.click('.csv-columns >> text=自動の判定に戻す');
+        assert.equal(await page.inputValue('#csvColAmount'), 'dc');
+        await page.click('#modalActions >> text=キャンセル');
+        assert.equal(await page.evaluate(() => localStorage.getItem('finAnalysisTool.importPreset')), 'bugyo');
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+      });
+
       await step('入力の補助：未入力の主な科目・前の期からコピー・入力中の桁区切り', async () => {
         await page.click('#tab-input');
         const chips = () => page.$$('#periodChips .chip:not(.chip-add)');
